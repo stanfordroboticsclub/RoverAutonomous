@@ -36,4 +36,4 @@ while True:
     pub_click.send(lat_click, lon_click)
     pub_angle.send(angle)
 
-    time.sleep(2)
+    time.sleep(1)
