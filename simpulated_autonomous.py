@@ -21,7 +21,7 @@ point = (37.428, -122.171)
 pt_click = (37.429, -122.170)
 
 i = 0
-angles = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45]
+angles = [0, 10, 20, 30, 40, 45]
 
 while True:
     lat,lon = point[0], point[1]
@@ -36,4 +36,4 @@ while True:
     pub_click.send(lat_click, lon_click)
     pub_angle.send(angle)
 
-    time.sleep(3)
+    time.sleep(2)
