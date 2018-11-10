@@ -16,9 +16,9 @@ port = 8870
 pub_angle = Publisher(fields, format_, port)
 
 i = 0
-point = (37.429, -122.170)
+point = (37.428, -122.171)
 
-pt_click = (37.428, -122.171)
+pt_click = (37.429, -122.170)
 
 i = 0
 angles = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45]
