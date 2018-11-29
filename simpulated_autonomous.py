@@ -15,13 +15,13 @@ format_ = "f"
 port = 8870
 pub_angle = Publisher(fields, format_, port)
 
-i = 0
+
 point = (37.428, -122.171)
 
 pt_click = (37.429, -122.170)
 
 i = 0
-angles = [0, 10, 20, 30, 40, 45]
+angles = [0, 10, 20, 30, 40, 45, 50, 70, 100, 150, 180, 210]
 
 while True:
     lat,lon = point[0], point[1]
