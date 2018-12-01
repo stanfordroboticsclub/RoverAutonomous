@@ -12,18 +12,20 @@ class AutonomousPannel:
 
     def __init__(self):
 
-        self.gyro = Subscriber('angle', 'f', 8870, 2)
-        self.initial_pos = Subscriber('time sats lat lon alt error_lat error_lon error_alt', 'ii3f3f', 8860)
+        # import pdb; pdb.set_trace()
+        self.gyro = Subscriber('angle', 'f', 8870, timeout=1)
+        self.initial_pos = Subscriber('time sats lat lon alt error_lat error_lon error_alt', 'ii3f3f', 8860, 2)
         self.final_pos = Subscriber('lat lon', '2f', 8890, 2)
         self.turn_counterclockwise = True;
         self.vForward = 0
         self.vTwist = 0
 
+        time.sleep(3)
 
         while True:
-            self.msg_gyro = self.gyro.recv()
-            self.msg_initial = self.initial_pos.recv()
-            self.msg_final = self.final_pos.recv()
+            self.msg_gyro = self.gyro.get()
+            self.msg_initial = self.initial_pos.get()
+            self.msg_final = self.final_pos.get()
             self.angle_gyro = self.msg_gyro.angle
             self.v_pts = [self.msg_final.lon - self.msg_initial.lon, self.msg_final.lat - self.msg_initial.lat]
             self.v_north = [0, 0.001]
@@ -33,8 +35,8 @@ class AutonomousPannel:
 
     def calculate_velocities(self):
         if self.msg_initial.lat == self.msg_final.lat and self.msg_initial.lon == self.msg_final.lon:
-            self.vTwist = 0
             self.vForward = 0
+            self.vTwist = 0
             self.pub.send(self.vForward, self.vTwist)
             print self.vForward
             print self.vTwist
@@ -42,24 +44,24 @@ class AutonomousPannel:
 
 
         if not self.intersect() and self.turn_counterclockwise:
-            self.vTwist = 155
             self.vForward = 0
+            self.vTwist = 155
             self.pub.send(self.vForward, self.vTwist)
             print self.vForward
             print self.vTwist
             return
 
         if not self.intersect() and not self.turn_counterclockwise:
-            self.vTwist = -155
             self.vForward = 0
+            self.vTwist = -155
             self.pub.send(self.vForward, self.vTwist)
             print self.vForward
             print self.vTwist
             return
 
         if self.intersect():
-            self.vTwist = 0
             self.vForward = 150
+            self.vTwist = 0
             self.pub.send(self.vForward, self.vTwist)
             print self.vForward
             print self.vTwist
@@ -83,13 +85,17 @@ class AutonomousPannel:
 
     def twist_direction(self):
         # Changes value of turn_counterclockwise based on relationship between vectors.
-        angle_from_x_axis = math.degrees(math.atan2(self.v_pts[1], self.v_pts[0])) + 180
-        angle_reverse = 360 - angle_from_x_axis
-        angle = self.angle_gyro - (angle_reverse + 90)
+        angle_from_x_axis = math.degrees(math.atan2(self.v_pts[1], self.v_pts[0]))
+        print 'Angle from x axis: {}'.format(angle_from_x_axis)
+        angle_reverse = (360 - angle_from_x_axis + 90) % 360
+        print 'Angle from y axis: {}'.format(angle_reverse)
+        angle = self.angle_gyro - angle_reverse
 
-        if abs(angle) < 180:
+        if angle < 0:
             self.turn_counterclockwise = False
-
+        if angle > 0:
+            self.turn_counterclockwise = True
+        print angle
 
 if __name__ == '__main__':
     a = AutonomousPannel()
