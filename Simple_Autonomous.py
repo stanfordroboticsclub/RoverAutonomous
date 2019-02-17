@@ -5,18 +5,20 @@ import time
 
 class AutonomousPannel:
 
-    fields = "forward twist"
-    typ = "2f"
-    port = 8900
-    pub = Publisher(fields, typ, port)
+    ### fields = "forward twist"
+    ### typ = "2f"
+    port = 8830
+    pub = Publisher(port, false)
 
     def __init__(self):
 
         # import pdb; pdb.set_trace()
-        self.gyro = Subscriber('angle', 'f', 8870, timeout=1)
-        self.initial_pos = Subscriber('time sats lat lon alt error_lat error_lon error_alt', 'ii3f3f', 8860, 2)
-        self.final_pos = Subscriber('lat lon', '2f', 8890, 2)
-        self.turn_counterclockwise = True;
+        self.gyro = Subscriber(8870, timeout=1)
+        self.initial_pos = Subscriber(8280, 5)
+        self.final_pos = Subscriber(8310, 2)
+        self.turn_counterclockwise = True
+        self.intersecting = False
+        self.slow = False
         self.vForward = 0
         self.vTwist = 0
 
@@ -26,43 +28,47 @@ class AutonomousPannel:
             self.msg_gyro = self.gyro.get()
             self.msg_initial = self.initial_pos.get()
             self.msg_final = self.final_pos.get()
-            self.angle_gyro = self.msg_gyro.angle
-            self.v_pts = [self.msg_final.lon - self.msg_initial.lon, self.msg_final.lat - self.msg_initial.lat]
+            self.angle_gyro = self.msg_gyro
+            self.v_pts = [self.msg_final[1] - self.msg_initial[3], self.msg_final[0] - self.msg_initial[2]]
             self.v_north = [0, 0.001]
             self.twist_direction()
             self.calculate_velocities()
             time.sleep(0.2)
 
     def calculate_velocities(self):
-        if self.msg_initial.lat == self.msg_final.lat and self.msg_initial.lon == self.msg_final.lon:
+        if self.msg_initial[2] == self.msg_final[0] and self.msg_initial[3] == self.msg_final[1]:
             self.vForward = 0
             self.vTwist = 0
-            self.pub.send(self.vForward, self.vTwist)
+            dataSend = [self.vForward, self.vTwist]
+            self.pub.send(dataSend)
             print self.vForward
             print self.vTwist
             return
 
 
-        if not self.intersect() and self.turn_counterclockwise:
+        if not self.intersecting and self.turn_counterclockwise:
             self.vForward = 0
-            self.vTwist = 155
-            self.pub.send(self.vForward, self.vTwist)
+            self.vTwist = 10
+            dataSend = [self.vForward, self.vTwist]
+            self.pub.send(dataSend)
             print self.vForward
             print self.vTwist
             return
 
-        if not self.intersect() and not self.turn_counterclockwise:
+        if not self.intersecting and not self.turn_counterclockwise:
             self.vForward = 0
-            self.vTwist = -155
-            self.pub.send(self.vForward, self.vTwist)
+            self.vTwist = -10
+            dataSend = [self.vForward, self.vTwist]
+            self.pub.send(dataSend)
             print self.vForward
             print self.vTwist
             return
 
-        if self.intersect():
-            self.vForward = 150
+        if self.intersecting:
+            self.vForward = 45
             self.vTwist = 0
-            self.pub.send(self.vForward, self.vTwist)
+            dataSend = [self.vForward, self.vTwist]
+            self.pub.send(dataSend)
             print self.vForward
             print self.vTwist
             return
@@ -87,14 +93,21 @@ class AutonomousPannel:
         # Changes value of turn_counterclockwise based on relationship between vectors.
         angle_from_x_axis = math.degrees(math.atan2(self.v_pts[1], self.v_pts[0]))
         print 'Angle from x axis: {}'.format(angle_from_x_axis)
-        angle_reverse = (360 - angle_from_x_axis + 90) % 360
+        angle_reverse = (90 - angle_from_x_axis) % 360
         print 'Angle from y axis: {}'.format(angle_reverse)
+
         angle = self.angle_gyro - angle_reverse
 
         if angle < 0:
             self.turn_counterclockwise = False
         if angle > 0:
             self.turn_counterclockwise = True
+
+        if math.fabs(angle) <= 10:
+            self.intersecting = True
+        else:
+            self.intersecting = False
+
         print angle
 
 if __name__ == '__main__':
