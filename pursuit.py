@@ -1,3 +1,6 @@
+#!/usr/bin/env python3
+
+
 from UDPComms import Publisher, Subscriber, timeout
 import math
 import time
@@ -5,20 +8,17 @@ import time
 
 class Pursuit:
 
-    port = 8830
-    pub = Publisher(port, false)
-
     def __init__(self):
 
         self.imu = Subscriber(8220, timeout=1)
-        self.gps = Subscriber(8280, timeout=1)
-        self.auto_contorl = Subscriber(8310, timeout=1)
+        self.gps = Subscriber(8280, timeout=2)
+        self.auto_control = Subscriber(8310, timeout=5)
 
-        self.cmd_vel = Subscriber(8830)
+        self.cmd_vel = Publisher(8831)
         time.sleep(3)
 
-        self.start_point = {"lat":0, "lon":0}
-        self.lookahead_radius = 50
+        self.start_point = {"lat":self.gps.get()[b'lat'] , "lon":self.gps.get()[b'lon']}
+        self.lookahead_radius = 20
         self.robot = None
 
         while True:
@@ -27,34 +27,49 @@ class Pursuit:
 
     def update(self):
 
+        self.robot = self.gps.get()
         cmd = self.auto_control.get()
-        if cmd['cmd'] == 'off':
-            self.start_point['lat'] = cmd['lat']
-            self.start_point['lon'] = cmd['lon']
-        lookahead = self.find_lookahead(cmd)
-        diff_angle = self.get_angle(lookahead)
-        print(diff_angle)
-        # self.send_velocities( 10* diff_angle)
+        print(cmd)
+        if cmd['command'] == 'off':
+            print("off")
+            self.start_point['lat'] = self.gps.get()[b'lat']
+            self.start_point['lon'] = self.gps.get()[b'lon']
+        elif( cmd['command'] == 'auto'):
+            lookahead = self.find_lookahead(cmd)
+            diff_angle = self.get_angle(lookahead)
+            self.send_velocities(diff_angle)
+        else:
+            raise ValueError
 
     def find_lookahead(self,cmd):
         x_start, y_start = self.project(self.start_point['lat'], self.start_point['lon'])
-        x_end, y_end = self.project(cmd['lat'], cmd['lon'])
+        x_end, y_end = self.project(cmd['target']['lat'], cmd['target']['lon'])
 
         self.robot = self.gps.get()
-        x_robot, y_robot = self.project(self.robot['lat'], self.robot['lon'])
+        x_robot, y_robot = self.project(self.robot[b'lat'], self.robot[b'lon'])
 
         if (x_robot-x_end)**2 + (y_robot - y_end)**2 < self.lookahead_radius**2:
             return (x_end, y_end)
+
+        # print('start', x_start,y_start)
+        # print('end', x_end,y_end)
+        # print('robot', x_robot,y_robot)
 
         a = (x_end - x_start)**2 + (y_end - y_start)**2
         b = 2*( (x_end-x_start)*(x_start-x_robot) + (y_end-y_start)*(y_start-y_robot))
         c = (x_start-x_robot)**2 + (y_start-y_robot)**2 - self.lookahead_radius**2
 
-        if b**2 - 4*a*c <=0:
-            t = -b/2*a
-        else:
-            t = (-b + math.sqrt(b**2 - 4*a*c))/2*a
+        # print('a', a)
+        # print('b', b)
+        # print('c', c)
 
+        if b**2 - 4*a*c <=0:
+            print("too far")
+            t = -b/(2*a)
+        else:
+            t = (-b + math.sqrt(b**2 - 4*a*c))/(2*a)
+
+        # print('t',t)
         assert t<=1
         assert t>=0
 
@@ -68,17 +83,18 @@ class Pursuit:
         heading_deg = self.imu.get()['angle'][0]
         head_rad = math.radians(heading_deg)
 
-        x_robot, y_robot = self.project(self.robot['lat'], self.robot['lon'])
+        x_robot, y_robot = self.project(self.robot[b'lat'], self.robot[b'lon'])
         x_look, y_look = lookahead
 
         target = math.atan2( x_look - x_robot, y_look - y_robot)
 
-        return (target - head_rad)%2*math.pi
+        # anti clockwise postive
+        return ((target - head_rad + math.pi)%(2*math.pi) - math.pi)
 
 
 
-    def send_velocities(self, turn_rate):
-        self.cmd_vel.send({"f": 100, "t": 100*turn_rate})
+    def send_velocities(self, angle):
+        self.cmd_vel.send({"f": 100, "t": -80*angle/math.pi })
 
     def project(self, lat, lon):
         lat_orig = self.start_point['lat']
