@@ -14,11 +14,11 @@ class Pursuit:
         self.gps = Subscriber(8280, timeout=2)
         self.auto_control = Subscriber(8310, timeout=5)
 
-        self.cmd_vel = Publisher(8831)
+        self.cmd_vel = Publisher(8830)
         time.sleep(3)
 
         self.start_point = {"lat":self.gps.get()[b'lat'] , "lon":self.gps.get()[b'lon']}
-        self.lookahead_radius = 20
+        self.lookahead_radius = 10
         self.robot = None
 
         while True:
@@ -29,7 +29,6 @@ class Pursuit:
 
         self.robot = self.gps.get()
         cmd = self.auto_control.get()
-        print(cmd)
         if cmd['command'] == 'off':
             print("off")
             self.start_point['lat'] = self.gps.get()[b'lat']
@@ -94,7 +93,9 @@ class Pursuit:
 
 
     def send_velocities(self, angle):
-        self.cmd_vel.send({"f": 100, "t": -80*angle/math.pi })
+        out = {"f": 70, "t": -100*angle/math.pi }
+        print(out)
+        self.cmd_vel.send(out)
 
     def project(self, lat, lon):
         lat_orig = self.start_point['lat']
