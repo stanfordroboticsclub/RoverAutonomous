@@ -18,7 +18,7 @@ class Pursuit:
         time.sleep(3)
 
         self.start_point = {"lat":self.gps.get()[b'lat'] , "lon":self.gps.get()[b'lon']}
-        self.lookahead_radius = 10
+        self.lookahead_radius = 7
         self.robot = None
 
         while True:
@@ -34,15 +34,26 @@ class Pursuit:
             self.start_point['lat'] = self.gps.get()[b'lat']
             self.start_point['lon'] = self.gps.get()[b'lon']
         elif( cmd['command'] == 'auto'):
-            lookahead = self.find_lookahead(cmd)
+            waypoints = [self.start_point] + cmd['waypoints']
+            i = 0
+            for p1, p2 in zip(waypoints[::-1][1:], waypoints[::-1][:-1]):
+                lookahead = self.find_lookahead(p1,p2)
+                if lookahead is not None:
+                    print("point intersection", i)
+                    break
+                i+=1
+            else:
+                print("NO intersection found!")
+                return
+
             diff_angle = self.get_angle(lookahead)
             self.send_velocities(diff_angle)
         else:
             raise ValueError
 
-    def find_lookahead(self,cmd):
-        x_start, y_start = self.project(self.start_point['lat'], self.start_point['lon'])
-        x_end, y_end = self.project(cmd['target']['lat'], cmd['target']['lon'])
+    def find_lookahead(self,p1, p2):
+        x_start, y_start = self.project(p1['lat'], p1['lon'])
+        x_end, y_end = self.project(p2['lat'], p2['lon'])
 
         self.robot = self.gps.get()
         x_robot, y_robot = self.project(self.robot[b'lat'], self.robot[b'lon'])
@@ -63,14 +74,17 @@ class Pursuit:
         # print('c', c)
 
         if b**2 - 4*a*c <=0:
+            return None
             print("too far")
             t = -b/(2*a)
         else:
             t = (-b + math.sqrt(b**2 - 4*a*c))/(2*a)
 
         # print('t',t)
-        assert t<=1
-        assert t>=0
+        if not t<=1:
+            return None
+        if not t>=0:
+            return None
 
         x_look = t * x_end + (1-t) * x_start
         y_look = t * y_end + (1-t) * y_start
@@ -93,7 +107,7 @@ class Pursuit:
 
 
     def send_velocities(self, angle):
-        out = {"f": 70, "t": -100*angle/math.pi }
+        out = {"f": 70, "t": -150*angle/math.pi }
         print(out)
         self.cmd_vel.send(out)
 
