@@ -107,7 +107,18 @@ class Pursuit:
 
 
     def send_velocities(self, angle):
-        out = {"f": 70, "t": -150*angle/math.pi }
+        turn_rate = -150*math.tanh(1.5*angle)
+
+        if math.fabs(angle) < math.radians(10):
+            forward_rate = 130
+        else if math.fabs(angle) < math.radians(60):
+            forward_rate = 80
+        else if math.fabs(angle) < math.radians(140):
+            forward_rate = 30
+        else:
+            forward_rate = 0
+
+        out = {"f": forward_rate, "t": turn_rate }
         print(out)
         self.cmd_vel.send(out)
 
