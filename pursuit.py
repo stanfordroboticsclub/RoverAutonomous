@@ -34,24 +34,44 @@ class Pursuit:
             self.start_point['lat'] = self.gps.get()[b'lat']
             self.start_point['lon'] = self.gps.get()[b'lon']
         elif( cmd['command'] == 'auto'):
-            waypoints = [self.start_point] + cmd['waypoints']
-            i = 0
-            for p1, p2 in zip(waypoints[::-1][1:], waypoints[::-1][:-1]):
-                lookahead = self.find_lookahead(p1,p2)
-                if lookahead is not None:
-                    print("point intersection", i)
-                    break
-                i+=1
-            else:
-                print("NO intersection found!")
-                return
-
+            lookahead = self.find_lookahead(cmd['waypoints'])
             diff_angle = self.get_angle(lookahead)
             self.send_velocities(diff_angle)
         else:
             raise ValueError
 
-    def find_lookahead(self,p1, p2):
+    def find_lookahead(self,waypoints):
+        start_waypoints = [self.start_point] + waypoints
+        waypoint_pairs = zip(start_waypoints[::-1][1:], start_waypoints[::-1][:-1])
+        i = 0
+        for p1, p2 in waypoint_pairs:
+            lookahead = self.lookahead_line(p1,p2)
+            if lookahead is not None:
+                print("point intersection", i)
+                return lookahead
+            i+=1
+        else:
+            print("NO intersection found!")
+
+        distances = []
+        for p1, p2 in waypoint_pairs:
+            lookahead = self.lookahead_line(p1,p2,project = True)
+            if lookahead is not None:
+                distances.append( (self.distance(lookahead), lookahead) )
+
+        for p1 in waypoints:
+            point = self.project(p1['lat'], p1['lon'])
+            distances.append( (self.distance(point), point) )
+
+        return min(distances)[1]
+
+    def distance(self, p1):
+        x_start, y_start = *p1
+        self.robot = self.gps.get()
+        x_robot, y_robot = self.project(self.robot[b'lat'], self.robot[b'lon'])
+        return math.sqrt((x_start - x_robot)**2 + (y_start - y_robot)**2)
+
+    def lookahead_line(self,p1, p2, project=False):
         x_start, y_start = self.project(p1['lat'], p1['lon'])
         x_end, y_end = self.project(p2['lat'], p2['lon'])
 
@@ -61,26 +81,18 @@ class Pursuit:
         if (x_robot-x_end)**2 + (y_robot - y_end)**2 < self.lookahead_radius**2:
             return (x_end, y_end)
 
-        # print('start', x_start,y_start)
-        # print('end', x_end,y_end)
-        # print('robot', x_robot,y_robot)
-
         a = (x_end - x_start)**2 + (y_end - y_start)**2
         b = 2*( (x_end-x_start)*(x_start-x_robot) + (y_end-y_start)*(y_start-y_robot))
         c = (x_start-x_robot)**2 + (y_start-y_robot)**2 - self.lookahead_radius**2
 
-        # print('a', a)
-        # print('b', b)
-        # print('c', c)
-
         if b**2 - 4*a*c <=0:
-            return None
-            print("too far")
-            t = -b/(2*a)
+            if project:
+                t = -b/(2*a)
+            else:
+                return None
         else:
             t = (-b + math.sqrt(b**2 - 4*a*c))/(2*a)
 
-        # print('t',t)
         if not t<=1:
             return None
         if not t>=0:
@@ -101,10 +113,8 @@ class Pursuit:
 
         target = math.atan2( x_look - x_robot, y_look - y_robot)
 
-        # anti clockwise postive
+        # anti clockwise positive
         return ((target - head_rad + math.pi)%(2*math.pi) - math.pi)
-
-
 
     def send_velocities(self, angle):
         turn_rate = -150*math.tanh(1.5*angle)
@@ -132,7 +142,6 @@ class Pursuit:
         x = (lon - lon_orig) * lon_per_deg
         y = (lat - lat_orig) * lat_per_deg
         return (x,y)
-
 
 
 if __name__ == '__main__':
