@@ -67,7 +67,7 @@ class Pursuit:
 
     def distance(self, p1):
         x_start, y_start = *p1
-        self.robot = self.gps.get()
+        # self.robot = self.gps.get()
         x_robot, y_robot = self.project(self.robot[b'lat'], self.robot[b'lon'])
         return math.sqrt((x_start - x_robot)**2 + (y_start - y_robot)**2)
 
@@ -75,7 +75,7 @@ class Pursuit:
         x_start, y_start = self.project(p1['lat'], p1['lon'])
         x_end, y_end = self.project(p2['lat'], p2['lon'])
 
-        self.robot = self.gps.get()
+        # self.robot = self.gps.get()
         x_robot, y_robot = self.project(self.robot[b'lat'], self.robot[b'lon'])
 
         if (x_robot-x_end)**2 + (y_robot - y_end)**2 < self.lookahead_radius**2:
