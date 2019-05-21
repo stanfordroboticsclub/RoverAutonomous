@@ -19,6 +19,7 @@ class Pursuit:
 
         self.start_point = {"lat":self.gps.get()[b'lat'] , "lon":self.gps.get()[b'lon']}
         self.lookahead_radius = 7
+        self.final_radius = 7
         self.robot = None
 
         while True:
@@ -34,11 +35,23 @@ class Pursuit:
             self.start_point['lat'] = self.gps.get()[b'lat']
             self.start_point['lon'] = self.gps.get()[b'lon']
         elif( cmd['command'] == 'auto'):
-            lookahead = self.find_lookahead(cmd['waypoints'])
-            diff_angle = self.get_angle(lookahead)
-            self.send_velocities(diff_angle)
+            self.analyze_stuck()
+            if(self.distance(self.project(cmd['waypoints'][-1]))):
+                print("REACHED DESTINATION")
+            else:
+                lookahead = self.find_lookahead(cmd['waypoints'])
+                diff_angle = self.get_angle(lookahead)
+                self.send_velocities(diff_angle)
         else:
             raise ValueError
+
+    def analyze_stuck(self):
+        self.stuck_location
+        self.stuck_time
+        pass
+
+    def un_stick(self):
+        pass
 
     def find_lookahead(self,waypoints):
         start_waypoints = [self.start_point] + waypoints
@@ -66,7 +79,7 @@ class Pursuit:
         return min(distances)[1]
 
     def distance(self, p1):
-        x_start, y_start = *p1
+        x_start, y_start = p1
         # self.robot = self.gps.get()
         x_robot, y_robot = self.project(self.robot[b'lat'], self.robot[b'lon'])
         return math.sqrt((x_start - x_robot)**2 + (y_start - y_robot)**2)
@@ -117,18 +130,21 @@ class Pursuit:
         return ((target - head_rad + math.pi)%(2*math.pi) - math.pi)
 
     def send_velocities(self, angle):
-        turn_rate = -150*math.tanh(1.5*angle)
+        # turn_rate = -100*math.tanh(1*angle)
+        turn_rate = -150*angle/math.pi
 
         if math.fabs(angle) < math.radians(10):
             forward_rate = 130
-        else if math.fabs(angle) < math.radians(60):
+        elif math.fabs(angle) < math.radians(60):
             forward_rate = 80
-        else if math.fabs(angle) < math.radians(140):
+        elif math.fabs(angle) < math.radians(140):
             forward_rate = 30
         else:
             forward_rate = 0
 
         out = {"f": forward_rate, "t": turn_rate }
+
+        # out = {"f": 70, "t": -150*angle/math.pi }
         print(out)
         self.cmd_vel.send(out)
 
