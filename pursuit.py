@@ -40,7 +40,8 @@ class Pursuit:
             self.start_point['lat'] = self.gps.get()[b'lat']
             self.start_point['lon'] = self.gps.get()[b'lon']
         elif( cmd['command'] == 'auto'):
-            # self.analyze_stuck()
+            if self.analyze_stuck():
+                self.un_stick
             last_waypoint = cmd['waypoints'][-1]
             if( self.distance(self.project(last_waypoint['lat'], last_waypoint['lon'])) \
                     < self.final_radius ):
@@ -53,12 +54,26 @@ class Pursuit:
             raise ValueError
 
     def analyze_stuck(self):
-        # self.stuck_location
-        # self.stuck_time
-        pass
+        self.past_locations.append([self.project(self.robot[b'lat'], self.robot[b'lon']), time.time()])
+        if len(self.past_locations) > 100
+            self.past_locations.pop(0)
+        location, t = self.past_locations[0]
+        # if self.distance(location)/(time.time() - t) < 0.1
+        if self.distance(location) < 5:
+            print("WE ARE STUCK")
+            self.stuck_location = location
+            self.stuck_time = t
+            return True
+        return False
 
     def un_stick(self):
-        pass
+        start_time = time.time()
+        while (time.time() - t) < 3 and self.auto_control.get()['command'] == 'auto':
+            self.analyze_stuck()
+            out = {"f": -100, "t": 30 }
+            print('unsticking', out)
+            # self.cmd_vel.send(out)
+            sleep(0.1)
 
     def find_lookahead(self,waypoints):
         start_waypoints = [self.start_point] + waypoints
