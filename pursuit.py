@@ -18,8 +18,8 @@ class Pursuit:
         time.sleep(3)
 
         self.start_point = {"lat":self.gps.get()[b'lat'] , "lon":self.gps.get()[b'lon']}
-        self.lookahead_radius = 7
-        self.final_radius = 7
+        self.lookahead_radius = 4
+        self.final_radius = 1
         self.robot = None
 
         while True:
@@ -28,15 +28,22 @@ class Pursuit:
 
     def update(self):
 
-        self.robot = self.gps.get()
-        cmd = self.auto_control.get()
+        try:
+            self.robot = self.gps.get()
+            cmd = self.auto_control.get()
+        except:
+            print('lost control')
+            return
+
         if cmd['command'] == 'off':
             print("off")
             self.start_point['lat'] = self.gps.get()[b'lat']
             self.start_point['lon'] = self.gps.get()[b'lon']
         elif( cmd['command'] == 'auto'):
-            self.analyze_stuck()
-            if(self.distance(self.project(cmd['waypoints'][-1]))):
+            # self.analyze_stuck()
+            last_waypoint = cmd['waypoints'][-1]
+            if( self.distance(self.project(last_waypoint['lat'], last_waypoint['lon'])) \
+                    < self.final_radius ):
                 print("REACHED DESTINATION")
             else:
                 lookahead = self.find_lookahead(cmd['waypoints'])
@@ -46,8 +53,8 @@ class Pursuit:
             raise ValueError
 
     def analyze_stuck(self):
-        self.stuck_location
-        self.stuck_time
+        # self.stuck_location
+        # self.stuck_time
         pass
 
     def un_stick(self):
@@ -131,7 +138,7 @@ class Pursuit:
 
     def send_velocities(self, angle):
         # turn_rate = -100*math.tanh(1*angle)
-        turn_rate = -150*angle/math.pi
+        turn_rate = -200*angle/math.pi
 
         if math.fabs(angle) < math.radians(10):
             forward_rate = 130
