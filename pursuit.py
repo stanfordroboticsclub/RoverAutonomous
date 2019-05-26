@@ -17,10 +17,13 @@ class Pursuit:
         self.cmd_vel = Publisher(8830)
         time.sleep(3)
 
-        self.start_point = {"lat":self.gps.get()[b'lat'] , "lon":self.gps.get()[b'lon']}
+        self.start_point = {"lat":self.gps.get()['lat'] , "lon":self.gps.get()['lon']}
         self.lookahead_radius = 4
         self.final_radius = 1
         self.robot = None
+
+        self.past_locations = []
+        self.stuck_time = 0
 
         while True:
             self.update()
@@ -37,15 +40,15 @@ class Pursuit:
 
         if cmd['command'] == 'off':
             print("off")
-            self.start_point['lat'] = self.gps.get()[b'lat']
-            self.start_point['lon'] = self.gps.get()[b'lon']
+            self.start_point['lat'] = self.gps.get()['lat']
+            self.start_point['lon'] = self.gps.get()['lon']
         elif( cmd['command'] == 'auto'):
-            if self.analyze_stuck():
-                self.un_stick
             last_waypoint = cmd['waypoints'][-1]
             if( self.distance(self.project(last_waypoint['lat'], last_waypoint['lon'])) \
                     < self.final_radius ):
                 print("REACHED DESTINATION")
+            elif self.analyze_stuck():
+                self.un_stick()
             else:
                 lookahead = self.find_lookahead(cmd['waypoints'])
                 diff_angle = self.get_angle(lookahead)
@@ -54,26 +57,37 @@ class Pursuit:
             raise ValueError
 
     def analyze_stuck(self):
-        self.past_locations.append([self.project(self.robot[b'lat'], self.robot[b'lon']), time.time()])
-        if len(self.past_locations) > 100
+        self.past_locations.append([self.project(self.robot['lat'], self.robot['lon']), time.time()])
+        if len(self.past_locations) < 100:
+            return False
+
+        while len(self.past_locations) > 100:
             self.past_locations.pop(0)
-        location, t = self.past_locations[0]
+        if (time.time() - self.stuck_time < 10):
+            return False
+
+        # location, t = self.past_locations[0]
         # if self.distance(location)/(time.time() - t) < 0.1
-        if self.distance(location) < 5:
+        locations = [self.past_locations[10*i+5][0] for i in range(4)]
+        max_loc = max([self.distance(loc) for loc in locations])
+
+        print("we are", max_loc, "from stcuk")
+
+        if max_loc< 1:
             print("WE ARE STUCK")
-            self.stuck_location = location
-            self.stuck_time = t
+            # self.stuck_location = location
+            self.stuck_time = time.time()
             return True
         return False
 
     def un_stick(self):
         start_time = time.time()
-        while (time.time() - t) < 3 and self.auto_control.get()['command'] == 'auto':
+        while (time.time() - start_time) < 4 and self.auto_control.get()['command'] == 'auto':
             self.analyze_stuck()
-            out = {"f": -100, "t": 30 }
+            out = {"f": -100, "t": -20 }
             print('unsticking', out)
-            # self.cmd_vel.send(out)
-            sleep(0.1)
+            self.cmd_vel.send(out)
+            time.sleep(0.1)
 
     def find_lookahead(self,waypoints):
         start_waypoints = [self.start_point] + waypoints
@@ -103,7 +117,7 @@ class Pursuit:
     def distance(self, p1):
         x_start, y_start = p1
         # self.robot = self.gps.get()
-        x_robot, y_robot = self.project(self.robot[b'lat'], self.robot[b'lon'])
+        x_robot, y_robot = self.project(self.robot['lat'], self.robot['lon'])
         return math.sqrt((x_start - x_robot)**2 + (y_start - y_robot)**2)
 
     def lookahead_line(self,p1, p2, project=False):
@@ -111,7 +125,7 @@ class Pursuit:
         x_end, y_end = self.project(p2['lat'], p2['lon'])
 
         # self.robot = self.gps.get()
-        x_robot, y_robot = self.project(self.robot[b'lat'], self.robot[b'lon'])
+        x_robot, y_robot = self.project(self.robot['lat'], self.robot['lon'])
 
         if (x_robot-x_end)**2 + (y_robot - y_end)**2 < self.lookahead_radius**2:
             return (x_end, y_end)
@@ -143,7 +157,7 @@ class Pursuit:
         heading_deg = self.imu.get()['angle'][0]
         head_rad = math.radians(heading_deg)
 
-        x_robot, y_robot = self.project(self.robot[b'lat'], self.robot[b'lon'])
+        x_robot, y_robot = self.project(self.robot['lat'], self.robot['lon'])
         x_look, y_look = lookahead
 
         target = math.atan2( x_look - x_robot, y_look - y_robot)
