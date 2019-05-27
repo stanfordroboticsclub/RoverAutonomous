@@ -57,7 +57,7 @@ class Pursuit:
             raise ValueError
 
     def analyze_stuck(self):
-        self.past_locations.append([self.project(self.robot['lat'], self.robot['lon']), time.time()])
+        self.past_locations.append([self.project(self.robot['lat'], self.robot['lon']), self.imu.get()['angle'][0], time.time()])
         if len(self.past_locations) < 100:
             return False
 
@@ -66,14 +66,16 @@ class Pursuit:
         if (time.time() - self.stuck_time < 10):
             return False
 
+        abs_angle = lambda x,y: min( abs(x-y + i*360) for i in [-1,0,1])
         # location, t = self.past_locations[0]
         # if self.distance(location)/(time.time() - t) < 0.1
-        locations = [self.past_locations[10*i+5][0] for i in range(4)]
+        locations,angles = [self.past_locations[10*i+5][0],self.past_locations[10*i+5][1] for i in range(9)]
         max_loc = max([self.distance(loc) for loc in locations])
+        max_angle = max([abs_angle(ang,self.imu.get()['angle'][0]) for ang in angles])
 
-        print("we are", max_loc, "from stcuk")
+        print("we are", max_loc, "from stcuk and angle", max_angle)
 
-        if max_loc< 1:
+        if max_loc< 1 and max_angle < 40:
             print("WE ARE STUCK")
             # self.stuck_location = location
             self.stuck_time = time.time()
