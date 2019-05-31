@@ -17,7 +17,9 @@ class Pursuit:
 
         self.cmd_vel = Publisher(8830)
         self.lights = Publisher(8590)
-        self.tennis = Subscriber(9999, timeout=2)
+        self.tennis1 = Subscriber(9021, timeout=2)
+        self.tennis2 = Subscriber(9022, timeout=2)
+        self.tennis3 = Subscriber(9023, timeout=2)
         time.sleep(3)
 
         self.start_point = {"lat":self.gps.get()['lat'] , "lon":self.gps.get()['lon']}
@@ -28,6 +30,9 @@ class Pursuit:
         self.robot = None
         self.guess = None # where are we driving towards
         self.guess_radius = 3 # if we are within this distance we move onto the next guess
+        self.guess_time = None
+
+        self.last_tennis_ball = 0
 
         self.past_locations = []
         self.stuck_time = 0
@@ -53,27 +58,66 @@ class Pursuit:
             self.send_stop()
 
         elif cmd['end_mode'] == 'tennis':
-            print("TODO PROGRAM SEARCH")
+            print("Entering search program")
 
             # tennis_balls = self.tennis.get()
-            tennis_balls = []
+            # tennis_balls = []
+
+            try:
+                t1 = self.tennis1.get()
+            except timeout:
+                t1 = (None, float('inf'))
+
+            try:
+                t2 = self.tennis2.get()
+            except timeout:
+                t2 = (None, float('inf'))
+
+            try:
+                t3 = self.tennis3.get()
+            except timeout:
+                t3 = (None, float('inf'))
+
+            dists = [(t1[1], 0), (t2[1], 1), (t3[1], 2)]
+            best = [t1,t2,t3][min(dists)[1]]
 
             last_waypoint = cmd['waypoints'][-1]
             endpoint = self.project(last_waypoint['lat'], last_waypoint['lon'])
 
-            if tennis_balls == []:
-                if self.guess == None:
+            if best[0] == None:
+
+                if (time.time() - self.last_tennis_ball) < 2:
+                    # if we saw a ball in the last 2 sec
+                    out = {"f": 70, "t": 0 }
+                    print('cont to prev seen ball', out)
+                    self.cmd_vel.send(out)
+
+                elif self.guess == None:
                     self.guess = self.get_guess(endpoint)
-                    print("NEW RANDOM")
+                    self.guess_time = time.time()
+                    print("NEW RANDOM GUESS - first")
                 elif self.distance(self.guess) < self.guess_radius:
                     self.guess = self.get_guess(endpoint)
-                    print("NEW RANDOM")
+                    print("NEW RANDOM GUESS - next")
+                    self.guess_time = time.time()
+                elif (time.time() - self.guess_time) > 40:
+                    self.guess = self.get_guess(endpoint)
+                    print("NEW RANDOM GUESS - timeout")
+                    self.guess_time = time.time()
+                    self.guess = self.get_guess(endpoint)
 
                 print("random corrds",self.random_corrd)
                 diff_angle = self.get_angle(self.guess)
                 self.send_velocities(diff_angle)
             else:
-                pass
+                # self.guess_time = time.time() # will this matter?
+                self.last_tennis_ball = time.time()
+                if best[1] < 200:
+                    print("REACHED TENNIS BALL")
+                    self.lights.send({'r':0, 'g':1, 'b':0})
+                    self.send_stop()
+                else:
+                    self.send_velocities_slow(best[0])
                 # get best tennis ball
                 # drive towards it
                 #follow the tennis ball!
@@ -245,6 +289,27 @@ class Pursuit:
 
         # anti clockwise positive
         return ((target - head_rad + math.pi)%(2*math.pi) - math.pi)
+
+
+
+    def send_velocities_slow(self, angle):
+        # turn_rate = -100*math.tanh(1*angle)
+        turn_rate = -200*angle/math.pi
+
+        if math.fabs(angle) < math.radians(10):
+            forward_rate = 90
+        elif math.fabs(angle) < math.radians(60):
+            forward_rate = 50
+        elif math.fabs(angle) < math.radians(140):
+            forward_rate = 30
+        else:
+            forward_rate = 0
+
+        out = {"f": forward_rate, "t": turn_rate }
+
+        # out = {"f": 70, "t": -150*angle/math.pi }
+        print(out)
+        self.cmd_vel.send(out)
 
     def send_velocities(self, angle):
         # turn_rate = -100*math.tanh(1*angle)
