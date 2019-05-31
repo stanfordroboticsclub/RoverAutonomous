@@ -20,13 +20,13 @@ class Pursuit:
         time.sleep(3)
 
         self.start_point = {"lat":self.gps.get()['lat'] , "lon":self.gps.get()['lon']}
-        self.lookahead_radius = 4
-        self.final_radius = 1
-        self.search_radius = 20
-        self.reached_destination = False
+        self.lookahead_radius = 6
+        self.final_radius = 1.5    # how close should we need to get to last endpoint
+        self.search_radius = 20    # how far should we look from the given endpoint
+        self.reached_destination = False # switch modes into tennis ball seach
         self.robot = None
-        self.guess = None
-        self.guess_radius = 5
+        self.guess = None # where are we driving towards
+        self.guess_radius = 5 # if we are within this distance we move onto the next guess
 
         self.past_locations = []
         self.stuck_time = 0
@@ -44,6 +44,9 @@ class Pursuit:
     def find_ball(self, cmd):
         if cmd['end_mode'] == 'none':
             print("REACHED TENNIS BALL")
+            self.lights.send({'r':0, 'g':1, 'b':0})
+            self.send_stop()
+
         elif cmd['end_mode'] == 'tennis':
             print("TODO PROGRAM SEARCH")
 
@@ -84,6 +87,7 @@ class Pursuit:
             self.reached_destination = False
             self.start_point['lat'] = self.gps.get()['lat']
             self.start_point['lon'] = self.gps.get()['lon']
+            self.lights.send({'r':1, 'g':0, 'b':0})
         elif( cmd['command'] == 'auto'):
             if self.reached_destination:
                 self.find_ball(cmd)
@@ -231,6 +235,13 @@ class Pursuit:
         # out = {"f": 70, "t": -150*angle/math.pi }
         print(out)
         self.cmd_vel.send(out)
+
+    def send_stop(self):
+        out = {"f": 0, "t": 0 }
+        # out = {"f": 70, "t": -150*angle/math.pi }
+        print('stoping', out)
+        self.cmd_vel.send(out)
+
 
 
     def project(self, lat, lon):
