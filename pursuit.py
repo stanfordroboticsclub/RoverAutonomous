@@ -15,7 +15,7 @@ class Pursuit:
         self.auto_control = Subscriber(8310, timeout=5)
 
         self.cmd_vel = Publisher(8830)
-        self.lights = Publisher(9999)
+        self.lights = Publisher(8590)
         self.tennis = Subscriber(9999, timeout=2)
         time.sleep(3)
 
@@ -25,6 +25,8 @@ class Pursuit:
         self.search_radius = 20
         self.reached_destination = False
         self.robot = None
+        self.guess = None
+        self.guess_radius = 5
 
         self.past_locations = []
         self.stuck_time = 0
@@ -33,12 +35,37 @@ class Pursuit:
             self.update()
             time.sleep(0.1)
 
+    def get_guess(self,endpoint):
+        x, y = endpoint
+        return (x + random.random()*self.search_radius, y + random.random()*self.search_radius)
+
+
+
     def find_ball(self, cmd):
         if cmd['end_mode'] == 'none':
             print("REACHED TENNIS BALL")
         elif cmd['end_mode'] == 'tennis':
             print("TODO PROGRAM SEARCH")
-            pass
+
+            tennis_balls = self.tennis.get()
+
+            last_waypoint = cmd['waypoints'][-1]
+            endpoint = self.project(last_waypoint['lat'], last_waypoint['lon'])
+
+            if tennis_balls = []:
+                if self.guess == None:
+                    self.guess = self.get_guess(endpoint)
+                elif self.distance(self.guess) < self.guess_radius:
+                    self.guess = self.get_guess(endpoint)
+
+                diff_angle = self.get_angle(self.guess)
+                self.send_velocities(diff_angle)
+            else:
+                pass
+                # get best tennis ball
+                # drive towards it
+                #follow the tennis ball!
+
 
         else:
             print("incorrect mode")
@@ -82,7 +109,7 @@ class Pursuit:
 
         while len(self.past_locations) > 100:
             self.past_locations.pop(0)
-        if (time.time() - self.stuck_time < 10):
+        if (time.time() - self.stuck_time < 14):
             return False
 
         abs_angle = lambda x,y: min( abs(x-y + i*360) for i in [-1,0,1])
@@ -94,7 +121,7 @@ class Pursuit:
 
         print("we are", max_loc, "from stcuk and angle", max_angle)
 
-        if max_loc< 1 and max_angle < 40:
+        if max_loc< 1 and max_angle < 30:
             print("WE ARE STUCK")
             # self.stuck_location = location
             self.stuck_time = time.time()
@@ -204,6 +231,7 @@ class Pursuit:
         # out = {"f": 70, "t": -150*angle/math.pi }
         print(out)
         self.cmd_vel.send(out)
+
 
     def project(self, lat, lon):
         lat_orig = self.start_point['lat']
