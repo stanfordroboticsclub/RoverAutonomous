@@ -4,6 +4,7 @@
 from UDPComms import Publisher, Subscriber, timeout
 import math
 import time
+import random
 
 
 class Pursuit:
@@ -26,7 +27,7 @@ class Pursuit:
         self.reached_destination = False # switch modes into tennis ball seach
         self.robot = None
         self.guess = None # where are we driving towards
-        self.guess_radius = 5 # if we are within this distance we move onto the next guess
+        self.guess_radius = 3 # if we are within this distance we move onto the next guess
 
         self.past_locations = []
         self.stuck_time = 0
@@ -37,7 +38,11 @@ class Pursuit:
 
     def get_guess(self,endpoint):
         x, y = endpoint
-        return (x + random.random()*self.search_radius, y + random.random()*self.search_radius)
+        rand_x = (2*random.random()-1)*self.search_radius
+        rand_y = (2*random.random()-1)*self.search_radius
+        self.random_corrd = (rand_x, rand_y)
+        print(rand_x, rand_y)
+        return (x + rand_x, y + rand_y)
 
 
 
@@ -50,7 +55,8 @@ class Pursuit:
         elif cmd['end_mode'] == 'tennis':
             print("TODO PROGRAM SEARCH")
 
-            tennis_balls = self.tennis.get()
+            # tennis_balls = self.tennis.get()
+            tennis_balls = []
 
             last_waypoint = cmd['waypoints'][-1]
             endpoint = self.project(last_waypoint['lat'], last_waypoint['lon'])
@@ -58,9 +64,12 @@ class Pursuit:
             if tennis_balls == []:
                 if self.guess == None:
                     self.guess = self.get_guess(endpoint)
+                    print("NEW RANDOM")
                 elif self.distance(self.guess) < self.guess_radius:
                     self.guess = self.get_guess(endpoint)
+                    print("NEW RANDOM")
 
+                print("random corrds",self.random_corrd)
                 diff_angle = self.get_angle(self.guess)
                 self.send_velocities(diff_angle)
             else:
@@ -89,11 +98,12 @@ class Pursuit:
             self.start_point['lon'] = self.gps.get()['lon']
             self.lights.send({'r':1, 'g':0, 'b':0})
         elif( cmd['command'] == 'auto'):
+            last_waypoint = cmd['waypoints'][-1]
+
             if self.reached_destination:
                 self.find_ball(cmd)
 
-            last_waypoint = cmd['waypoints'][-1]
-            if( self.distance(self.project(last_waypoint['lat'], last_waypoint['lon'])) \
+            elif( self.distance(self.project(last_waypoint['lat'], last_waypoint['lon'])) \
                     < self.final_radius ):
                 self.reached_destination = True
                 print("REACHED final End point")
@@ -140,6 +150,23 @@ class Pursuit:
             self.analyze_stuck()
             out = {"f": -100, "t": -20 }
             print('unsticking', out)
+            self.cmd_vel.send(out)
+            time.sleep(0.1)
+
+        start_time = time.time()
+        start_angle = self.imu.get()['angle'][0]
+        while (time.time() - start_time) < 1 and self.auto_control.get()['command'] == 'auto':
+            self.analyze_stuck()
+            out = {"f": 0, "t": -70 }
+            print('unsticking part 2', out)
+            self.cmd_vel.send(out)
+            time.sleep(0.1)
+
+        start_time = time.time()
+        while (time.time() - start_time) < 2 and self.auto_control.get()['command'] == 'auto':
+            self.analyze_stuck()
+            out = {"f": 70, "t": 0 }
+            print('unsticking part 2', out)
             self.cmd_vel.send(out)
             time.sleep(0.1)
 
