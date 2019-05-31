@@ -15,11 +15,15 @@ class Pursuit:
         self.auto_control = Subscriber(8310, timeout=5)
 
         self.cmd_vel = Publisher(8830)
+        self.lights = Publisher(9999)
+        self.tennis = Subscriber(9999, timeout=2)
         time.sleep(3)
 
         self.start_point = {"lat":self.gps.get()['lat'] , "lon":self.gps.get()['lon']}
         self.lookahead_radius = 4
         self.final_radius = 1
+        self.search_radius = 20
+        self.reached_destination = False
         self.robot = None
 
         self.past_locations = []
@@ -28,6 +32,16 @@ class Pursuit:
         while True:
             self.update()
             time.sleep(0.1)
+
+    def find_ball(self, cmd):
+        if cmd['end_mode'] == 'none':
+            print("REACHED TENNIS BALL")
+        elif cmd['end_mode'] == 'tennis':
+            print("TODO PROGRAM SEARCH")
+            pass
+
+        else:
+            print("incorrect mode")
 
     def update(self):
 
@@ -40,13 +54,18 @@ class Pursuit:
 
         if cmd['command'] == 'off':
             print("off")
+            self.reached_destination = False
             self.start_point['lat'] = self.gps.get()['lat']
             self.start_point['lon'] = self.gps.get()['lon']
         elif( cmd['command'] == 'auto'):
+            if self.reached_destination:
+                self.find_ball(cmd)
+
             last_waypoint = cmd['waypoints'][-1]
             if( self.distance(self.project(last_waypoint['lat'], last_waypoint['lon'])) \
                     < self.final_radius ):
-                print("REACHED DESTINATION")
+                self.reached_destination = True
+                print("REACHED final End point")
             elif self.analyze_stuck():
                 self.un_stick()
             else:
