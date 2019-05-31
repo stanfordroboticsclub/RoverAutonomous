@@ -55,7 +55,7 @@ class Pursuit:
             last_waypoint = cmd['waypoints'][-1]
             endpoint = self.project(last_waypoint['lat'], last_waypoint['lon'])
 
-            if tennis_balls = []:
+            if tennis_balls == []:
                 if self.guess == None:
                     self.guess = self.get_guess(endpoint)
                 elif self.distance(self.guess) < self.guess_radius:
@@ -119,7 +119,9 @@ class Pursuit:
         abs_angle = lambda x,y: min( abs(x-y + i*360) for i in [-1,0,1])
         # location, t = self.past_locations[0]
         # if self.distance(location)/(time.time() - t) < 0.1
-        locations,angles = [self.past_locations[10*i+5][0],self.past_locations[10*i+5][1] for i in range(9)]
+        locations = [self.past_locations[10*i+5][0] for i in range(9)]
+        angles    = [self.past_locations[10*i+5][1] for i in range(9)]
+
         max_loc = max([self.distance(loc) for loc in locations])
         max_angle = max([abs_angle(ang,self.imu.get()['angle'][0]) for ang in angles])
 
