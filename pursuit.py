@@ -16,7 +16,8 @@ class Pursuit:
         self.auto_control = Subscriber(8310, timeout=5)
 
         self.cmd_vel = Publisher(8830)
-        self.lights = Publisher(8590)
+        # self.lights = Publisher(8590)
+        self.servo = Publisher(8120)
         self.tennis1 = Subscriber(9021, timeout=2)
         self.tennis2 = Subscriber(9022, timeout=2)
         self.tennis3 = Subscriber(9023, timeout=2)
@@ -54,7 +55,8 @@ class Pursuit:
     def find_ball(self, cmd):
         if cmd['end_mode'] == 'none':
             print("REACHED TENNIS BALL")
-            self.lights.send({'r':0, 'g':1, 'b':0})
+            # self.lights.send({'r':0, 'g':1, 'b':0})
+            self.servo.send({'pan':0,'tilt':90})
             self.send_stop()
 
         elif cmd['end_mode'] == 'tennis':
@@ -114,7 +116,8 @@ class Pursuit:
                 self.last_tennis_ball = time.time()
                 if best[1] < 200:
                     print("REACHED TENNIS BALL")
-                    self.lights.send({'r':0, 'g':1, 'b':0})
+                    # self.lights.send({'r':0, 'g':1, 'b':0})
+                    self.servo.send({'pan':0,'tilt':90})
                     self.send_stop()
                 else:
                     self.send_velocities_slow(best[0])
@@ -140,7 +143,8 @@ class Pursuit:
             self.reached_destination = False
             self.start_point['lat'] = self.gps.get()['lat']
             self.start_point['lon'] = self.gps.get()['lon']
-            self.lights.send({'r':1, 'g':0, 'b':0})
+            # self.lights.send({'r':1, 'g':0, 'b':0})
+            self.servo.send({'pan':0,'tilt':-90})
         elif( cmd['command'] == 'auto'):
             last_waypoint = cmd['waypoints'][-1]
 
