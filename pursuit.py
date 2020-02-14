@@ -18,9 +18,8 @@ class Pursuit:
         self.cmd_vel = Publisher(8830)
         # self.lights = Publisher(8590)
         self.servo = Publisher(8120)
-        self.tennis1 = Subscriber(9021, timeout=2)
-        self.tennis2 = Subscriber(9022, timeout=2)
-        self.tennis3 = Subscriber(9023, timeout=2)
+
+        self.aruco = Subscriber(8390, timeout=2)
         time.sleep(3)
 
         self.start_point = {"lat":self.gps.get()['lat'] , "lon":self.gps.get()['lon']}
@@ -51,10 +50,9 @@ class Pursuit:
         return (x + rand_x, y + rand_y)
 
 
-
     def find_ball(self, cmd):
         if cmd['end_mode'] == 'none':
-            print("REACHED TENNIS BALL")
+            print("REACHED ENDPOINT")
             # self.lights.send({'r':0, 'g':1, 'b':0})
             self.servo.send({'pan':0,'tilt':90})
             self.send_stop()
@@ -62,69 +60,52 @@ class Pursuit:
         elif cmd['end_mode'] == 'tennis':
             print("Entering search program")
 
-            # tennis_balls = self.tennis.get()
-            # tennis_balls = []
-
             try:
-                t1 = self.tennis1.get()
+                marker = self.aruco.get()
             except timeout:
-                t1 = (None, float('inf'))
-
-            try:
-                t2 = self.tennis2.get()
-            except timeout:
-                t2 = (None, float('inf'))
-
-            try:
-                t3 = self.tennis3.get()
-            except timeout:
-                t3 = (None, float('inf'))
-
-            dists = [(t1[1], 0), (t2[1], 1), (t3[1], 2)]
-            best = [t1,t2,t3][min(dists)[1]]
+                marker = None
 
             last_waypoint = cmd['waypoints'][-1]
             endpoint = self.project(last_waypoint['lat'], last_waypoint['lon'])
 
-            if best[0] == None:
+            if marker == None:
 
                 if (time.time() - self.last_tennis_ball) < 2:
                     # if we saw a ball in the last 2 sec
                     out = {"f": 70, "t": 0 }
-                    print('cont to prev seen ball', out)
+                    print('cont to prev seen marker', out)
                     self.cmd_vel.send(out)
 
-                elif self.guess == None:
-                    self.guess = self.get_guess(endpoint)
-                    self.guess_time = time.time()
-                    print("NEW RANDOM GUESS - first")
-                elif self.distance(self.guess) < self.guess_radius:
-                    self.guess = self.get_guess(endpoint)
-                    print("NEW RANDOM GUESS - next")
-                    self.guess_time = time.time()
-                elif (time.time() - self.guess_time) > 40:
-                    self.guess = self.get_guess(endpoint)
-                    print("NEW RANDOM GUESS - timeout")
-                    self.guess_time = time.time()
-                    self.guess = self.get_guess(endpoint)
+                else:
 
-                print("random corrds",self.random_corrd)
-                diff_angle = self.get_angle(self.guess)
-                self.send_velocities(diff_angle)
+                    if self.guess == None:
+                        self.guess = self.get_guess(endpoint)
+                        self.guess_time = time.time()
+                        print("NEW RANDOM GUESS - first")
+
+                    elif self.distance(self.guess) < self.guess_radius:
+                        self.guess = self.get_guess(endpoint)
+                        print("NEW RANDOM GUESS - next")
+                        self.guess_time = time.time()
+
+                    elif (time.time() - self.guess_time) > 40:
+                        self.guess = self.get_guess(endpoint)
+                        print("NEW RANDOM GUESS - timeout")
+                        self.guess_time = time.time()
+                        self.guess = self.get_guess(endpoint)
+
+                    print("random corrds",self.random_corrd)
+                    diff_angle = self.get_angle(self.guess)
+                    self.send_velocities(diff_angle)
             else:
                 # self.guess_time = time.time() # will this matter?
                 self.last_tennis_ball = time.time()
-                if best[1] < 200:
-                    print("REACHED TENNIS BALL")
-                    # self.lights.send({'r':0, 'g':1, 'b':0})
-                    self.servo.send({'pan':0,'tilt':90})
+
+                if marker['dist'] < 1.5:
+                    print("REACHED MARKER")
                     self.send_stop()
                 else:
-                    self.send_velocities_slow(best[0])
-                # get best tennis ball
-                # drive towards it
-                #follow the tennis ball!
-
+                    self.send_velocities_slow(marker['angle'])
 
         else:
             print("incorrect mode")

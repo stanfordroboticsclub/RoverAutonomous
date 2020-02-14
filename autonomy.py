@@ -7,13 +7,15 @@ import time
 import random
 
 
-from enum import Enum
+import enum
 
 
-STATES = Enum("STATES", "PathFollower", "Search", )
+class Situation(enum.Enum):
+    ok = enum.auto()
+    stuck = enum.auto()
+    done = enum.auto()
 
 class StateMachine:
-
     def __init__(self, rover):
         self.rover = rover
 
@@ -27,37 +29,33 @@ class StateMachine:
     def change_state(self, state):
         self.state = state
 
-    def run(self):
-        self.state.run()
-
-class State:
-    def __init__(self, rover, machine):
-        self.rover = rover
-        self.machine = machine
-
-    def change_state(self, state):
-        self.machine.change_state(state)
-
-    def run(self):
+    def run(self) -> Situation:
         raise NotImplementedError 
 
 
-class PathFollower(State):
-
-    def run(self):
+class GateTask(StateMachine):
+    def run(self) -> Situation:
         self.rover.update()
-        self.rover.
 
-class FinalApproachGate(State):
+
+class PathFollower(StateMachine):
+
+    def run(self) -> Situation:
+        self.rover.update()
+
+        if ()
+            return Situation.done
+
+class FinalApproachGate(StateMachine):
     pass
 
-class FinalApproachPost(State):
+class FinalApproachPost(StateMachine):
     pass
 
-class Unstuck(State):
+class Unstuck(StateMachine):
     pass
 
-class Search(State):
+class Search(StateMachine):
     pass
 
 
