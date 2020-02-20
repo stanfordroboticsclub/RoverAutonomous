@@ -9,6 +9,8 @@ import random
 
 import enum
 
+from typing import Dict, Tuple, Sequence, List
+
 
 class Situation(enum.Enum):
     ok = enum.auto()
@@ -35,7 +37,9 @@ class PostTask(StateMachine):
         self.state = self.pathfollower
 
     def run(self) -> Situation:
-        self.rover.update()
+        ret = self.state.run()
+
+        if self.finalapproach.
 
 
 class PathFollower(StateMachine):
@@ -51,16 +55,17 @@ class PathFollower(StateMachine):
         if ()
             return Situation.done
 
-    def find_lookahead(self,waypoints):
+    def save_start_point(self):
+        self.start_point = self.rover.get_pose()
+
+    def find_lookahead(self,waypoints: List[Pose]) -> Pose:
         start_waypoints = [self.start_point] + waypoints
         waypoint_pairs = zip(start_waypoints[::-1][1:], start_waypoints[::-1][:-1])
-        i = 0
+
         for p1, p2 in waypoint_pairs:
             lookahead = self.lookahead_line(p1,p2)
             if lookahead is not None:
-                print("point intersection", i)
                 return lookahead
-            i+=1
         else:
             print("NO intersection found!")
 
@@ -68,33 +73,22 @@ class PathFollower(StateMachine):
         for p1, p2 in waypoint_pairs:
             lookahead = self.lookahead_line(p1,p2,project = True)
             if lookahead is not None:
-                distances.append( (self.distance(lookahead), lookahead) )
+                distances.append( (self.rover.get_pose().dist(lookahead), lookahead) )
 
         for p1 in waypoints:
-            point = self.project(p1['lat'], p1['lon'])
-            distances.append( (self.distance(point), point) )
+            distances.append( (self.rover.get_pose().dist(point), point) )
 
         return min(distances)[1]
 
-    def distance(self, p1):
-        x_start, y_start = p1
-        # self.robot = self.gps.get()
-        x_robot, y_robot = self.project(self.robot['lat'], self.robot['lon'])
-        return math.sqrt((x_start - x_robot)**2 + (y_start - y_robot)**2)
+    def lookahead_line(self, start: Pose, end: Pose, project=False) -> Pose:
+        robot = self.rover.get_pose()
 
-    def lookahead_line(self,p1, p2, project=False):
-        x_start, y_start = self.project(p1['lat'], p1['lon'])
-        x_end, y_end = self.project(p2['lat'], p2['lon'])
+        if robot.dist(end) < self.lookahead_radius:
+            return end
 
-        # self.robot = self.gps.get()
-        x_robot, y_robot = self.project(self.robot['lat'], self.robot['lon'])
-
-        if (x_robot-x_end)**2 + (y_robot - y_end)**2 < self.lookahead_radius**2:
-            return (x_end, y_end)
-
-        a = (x_end - x_start)**2 + (y_end - y_start)**2
-        b = 2*( (x_end-x_start)*(x_start-x_robot) + (y_end-y_start)*(y_start-y_robot))
-        c = (x_start-x_robot)**2 + (y_start-y_robot)**2 - self.lookahead_radius**2
+        a = (end.x - start.x)**2 + (end.y - start.y)**2
+        b = 2*( (end.x-start.x)*(start.x-robot.x) + (end.y-start.y)*(start.y-robot.y))
+        c = (start.x-robot.x)**2 + (start.y-robot.y)**2 - self.lookahead_radius**2
 
         if b**2 - 4*a*c <=0:
             if project:
@@ -109,44 +103,21 @@ class PathFollower(StateMachine):
         if not t>=0:
             return None
 
-        x_look = t * x_end + (1-t) * x_start
-        y_look = t * y_end + (1-t) * y_start
+        x_look = t * end.x + (1-t) * start.x
+        y_look = t * end.y + (1-t) * start.y
 
-        return (x_look, y_look)
+        return Pose(x_look, y_look)
 
 
-    def get_angle(self, lookahead):
-        heading_deg = self.imu.get()['angle'][0]
-        head_rad = math.radians(heading_deg)
-
-        x_robot, y_robot = self.project(self.robot['lat'], self.robot['lon'])
-        x_look, y_look = lookahead
-
-        target = math.atan2( x_look - x_robot, y_look - y_robot)
+    def get_angle(self, lookahead: Pose):
+        pose = self.rover.get_pose()
+        target = pose.bearing(lookahead)
 
         # anti clockwise positive
-        return ((target - head_rad + math.pi)%(2*math.pi) - math.pi)
+        return ((target - pose.a + math.pi)%(2*math.pi) - math.pi)
 
-    def send_velocities_slow(self, angle):
-        # turn_rate = -100*math.tanh(1*angle)
-        turn_rate = -200*angle/math.pi
-
-        if math.fabs(angle) < math.radians(10):
-            forward_rate = 90
-        elif math.fabs(angle) < math.radians(60):
-            forward_rate = 50
-        elif math.fabs(angle) < math.radians(140):
-            forward_rate = 30
-        else:
-            forward_rate = 0
-
-        out = {"f": forward_rate, "t": turn_rate }
-
-        print(out)
-        self.cmd_vel.send(out)
 
     def send_velocities(self, angle):
-        # turn_rate = -100*math.tanh(1*angle)
         turn_rate = -200*angle/math.pi
 
         if math.fabs(angle) < math.radians(10):
@@ -158,15 +129,8 @@ class PathFollower(StateMachine):
         else:
             forward_rate = 0
 
-        out = {"f": forward_rate, "t": turn_rate }
+        self.rover.send_vel(forward_rate, turn_rate)
 
-        print(out)
-        self.cmd_vel.send(out)
-
-    def send_stop(self):
-        out = {"f": 0, "t": 0 }
-        print('stoping', out)
-        self.cmd_vel.send(out)
 
 class FinalApproachGate(StateMachine):
     pass
@@ -182,6 +146,19 @@ class Search(StateMachine):
 
 
 
+class Pose:
+    def __init__(self, x, y, angle=None):
+        self.x = x
+        self.y = y
+        self.a = angle
+
+    def dist(self, other):
+        return math.sqrt((self.x - other.x)**2 + (self.y - other.y)**2)
+
+    def bearing(self,other):
+        return math.atan2( other.x - self.x, other.y - self.y)
+
+
 class Rover:
 
     def __init__(self):
@@ -195,17 +172,28 @@ class Rover:
         self.aruco = Subscriber(9021, timeout=2)
         time.sleep(3)
 
-        self.start_point = {"lat":self.gps.get()['lat'] , "lon":self.gps.get()['lon']}
+        self.start_gps = self.gps.recv()
+        # self.start_point = {"lat":self.gps.get()['lat'] , "lon":self.gps.get()['lon']}
 
-    def send_velocities(self):
+    def project(self, lat, lon):
+        lat_orig = self.start_gps['lat']
+        lon_orig = self.start_gps['lon']
+        RADIUS = 6371 * 1000
+        lon_per_deg = RADIUS * 2 * math.pi / 360
+        lat_per_deg = lon_per_deg * math.cos(math.radians(lat_orig))
+
+        x = (lon - lon_orig) * lon_per_deg
+        y = (lat - lat_orig) * lat_per_deg
+        return (x,y)
+
+    def get_pose(self):
+        gps = self.gps.get()
+        heading = math.radians( self.imu.get()['angle'][0] )
+        return Pose( *self.project( gps['lat'], gps['lon']), heading)
+
+    def send_velocities(self, forward, twist):
         pass
 
-    def follow_path(self,waypoints):
-        pass
-
-
-    def update_sensors(self):
-        pass
 
 
 
@@ -409,17 +397,6 @@ class Pursuit:
 
 
 
-
-    def project(self, lat, lon):
-        lat_orig = self.start_point['lat']
-        lon_orig = self.start_point['lon']
-        RADIUS = 6371 * 1000
-        lon_per_deg = RADIUS * 2 * math.pi / 360
-        lat_per_deg = lon_per_deg * math.cos(math.radians(lat_orig))
-
-        x = (lon - lon_orig) * lon_per_deg
-        y = (lat - lat_orig) * lat_per_deg
-        return (x,y)
 
 
 if __name__ == '__main__':
