@@ -76,13 +76,13 @@ class PostTask(StateMachine):
         if self.state == self.State.Following:
             self.pathfollower.run(waypoints)
             if self.rover.get_pose().dist( waypoints[-1] ) < self.final_waypoint_tol:
-                self.state = self.State.Search
+                self.state = self.State.Searching
             return
 
         elif self.state == self.State.Searching:
             searched = [4,5] # TODO HARDCODED
             self.search.run(waypoints[-1], searched )
-            if min(self.get_aruco()[i].dist for i in searched) < self.aruco_visual_tolerance:
+            if min(self.rover.get_aruco()[i].dist for i in searched) < self.aruco_visual_tolerance:
                 self.state = self.State.Final
 
         elif self.state == self.State.Final:
@@ -125,7 +125,7 @@ class PathFollower(StateMachine):
                 distances.append( (self.rover.get_pose().dist(lookahead), lookahead) )
 
         for p1 in waypoints:
-            distances.append( (self.rover.get_pose().dist(point), point) )
+            distances.append( (self.rover.get_pose().dist(p1), p1) )
 
         return min(distances)[1]
 
