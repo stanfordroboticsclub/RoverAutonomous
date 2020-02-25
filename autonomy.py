@@ -64,23 +64,30 @@ class PostTask(StateMachine):
         self.search        = Search(self, self.rover)
         self.finalapproach = FinalApproachPost(self, self.rover)
 
+        self.final_waypoint_tol = 5
+        self.aruco_visual_tolerance = 1
+
         self.state = self.State.Following
 
     def run(self) -> Situation:
         print(type(self).__name__, "-->", end = " ")
         waypoints = self.rover.get_waypoints()
 
-        if self.state = self.State.Following:
+        if self.state == self.State.Following:
             self.pathfollower.run(waypoints)
-            if self.rover.get_pose().dist( waypoints[-1] ) < 10:
+            if self.rover.get_pose().dist( waypoints[-1] ) < self.final_waypoint_tol:
                 self.state = self.State.Search
             return
 
-        elif self.state = self.State.Searching:
-            self.search.run(waypoints[-1])
+        elif self.state == self.State.Searching:
+            searched = [4,5] # TODO HARDCODED
+            self.search.run(waypoints[-1], searched )
+            if min(self.get_aruco()[i].dist for i in searched) < self.aruco_visual_tolerance:
+                self.state = self.State.Final
 
-        elif self.state = self.State.Final:
-            self.finalapproach.run()
+        elif self.state == self.State.Final:
+            print("DONE!!!")
+            # self.finalapproach.run()
 
 class PathFollower(StateMachine):
     def __init__(self,*args):
@@ -88,7 +95,7 @@ class PathFollower(StateMachine):
         self.lookahead_radius = 6
         self.start_point = None
 
-    def run(self, waypoints: List[Pose] ) -> Situation:
+    def run(self, waypoints: List['Pose'] ) -> Situation:
         print(type(self).__name__, "-->", end = " ")
         if self.start_point is None:
             self.save_start_point()
@@ -100,7 +107,7 @@ class PathFollower(StateMachine):
     def save_start_point(self):
         self.start_point = self.rover.get_pose()
 
-    def find_lookahead(self,waypoints: List[Pose]) -> Pose:
+    def find_lookahead(self,waypoints: List['Pose']) -> 'Pose':
         start_waypoints = [self.start_point] + waypoints
         waypoint_pairs = zip(start_waypoints[::-1][1:], start_waypoints[::-1][:-1])
 
@@ -122,7 +129,7 @@ class PathFollower(StateMachine):
 
         return min(distances)[1]
 
-    def lookahead_line(self, start: Pose, end: Pose, project=False) -> Pose:
+    def lookahead_line(self, start: 'Pose', end: 'Pose', project=False) -> 'Pose':
         robot = self.rover.get_pose()
 
         if robot.dist(end) < self.lookahead_radius:
@@ -151,7 +158,7 @@ class PathFollower(StateMachine):
         return Pose(x_look, y_look)
 
 
-    def get_angle(self, lookahead: Pose):
+    def get_angle(self, lookahead: 'Pose'):
         pose = self.rover.get_pose()
         target = pose.bearing(lookahead)
 
@@ -178,46 +185,61 @@ class FinalApproachGate(StateMachine):
     pass
 
 class FinalApproachPost(StateMachine):
-    pass
+    def __init__(self,*args):
+        super().__init__(*args)
+        self.stoping_distance = 1
+
+    def run(self) -> Situation:
+        print(type(self).__name__, "-->", end = " ")
+        #TODO WRITE THIS
+
 
 class Unstuck(StateMachine):
     pass
-
 
 class Search(StateMachine):
     def __init__(self,*args):
         super().__init__(*args)
         self.search_radius = 10
-        self.accept_radius = 3
+        self.accept_radius = 2
         self.guess_timeout = 30
 
         self.pathfollower = PathFollower()
         self.guess = None
         self.last_guess_time = float('-inf')
 
-    def run(self, endpoint: Pose) -> Situation:
+    def run(self, endpoint: 'Pose', searched) -> Situation:
         print(type(self).__name__, "-->", end = " ")
-        if self.guess is None:
-            self.set_guess(endpoint)
+        markers = self.rover.get_aruco()
+
+        if set(markers.keys()).intersection(set(searched)):
+            for idx, marker in markers.items():
+                if idx in searched:
+                    g = self.rover.get_pose().extraploate(marker)
+                    self.set_guess(g)
+                    break
+
+        elif self.guess is None:
+            self.rand_guess(endpoint)
 
         elif self.rover.get_pose().dist(self.guess) < self.accept_radius:
-            self.set_guess(endpoint)
+            self.rand_guess(endpoint)
 
         elif time.monotonic() - self.last_guess_time > self.guess_timeout:
-            self.set_guess(endpoint)
+            self.rand_guess(endpoint)
 
         self.pathfollower.run([endpoint])
 
-    def set_guess(self, endpoint: Pose):
+    def rand_guess(self,endpoint: 'Pose'):
         rand_x = (2*random.random()-1)*self.search_radius
         rand_y = (2*random.random()-1)*self.search_radius
         print(rand_x, rand_y)
-        self.guess = Pose(endpoint.x + rand_x, endpoint.y + rand_y)
+        self.set_guess(Pose(endpoint.x + rand_x, endpoint.y + rand_y))
 
+    def set_guess(self, guess: 'Pose'):
+        self.guess = guess
         self.last_guess_time = time.monotonic()
         self.pathfollower.save_start_point()
-
-
 
 class Pose:
     def __init__(self, x, y, angle=None):
@@ -225,16 +247,23 @@ class Pose:
         self.y = y
         self.a = angle
 
-    def dist(self, other):
+    def dist(self, other: 'Pose'):
         return math.sqrt((self.x - other.x)**2 + (self.y - other.y)**2)
 
-    def bearing(self,other):
+    def bearing(self,other: 'Pose'):
         return math.atan2( other.x - self.x, other.y - self.y)
-
-    def extraploate(self, distance, angle):
+     
+    def extraploate(self, bearing: 'Bearing') -> 'Pose':
+        distance = bearing.dist
+        angle = bearing.a
         x = self.x + distance * math.cos(self.a + angle)
         y = self.y + distance * math.sin(self.a + angle)
         return Pose(x,y)
+
+class Bearing:
+    def __init__(self, dist, angle):
+        self.dist = dist
+        self.a = angle
 
 class Rover:
     def __init__(self):
@@ -276,7 +305,10 @@ class Rover:
 
     def get_aruco(self):
         markers = self.aruco.get()
-        # TODO
+        out = {}
+        for idx, dist, angle in markers:
+            out[idx] = Bearing(dist, math.radians(angle))
+        return out
 
 
 if __name__ == '__main__':
