@@ -27,20 +27,33 @@ class TaskManager:
         self.rover = Rover()
 
         self.post  = PostTask(self, self.rover)
-        self.gate  = GateTask(self, self.rover)
+        # self.gate  = GateTask(self, self.rover)
         # self.retu  = PathFollower(self, self.rover)
+        self.follow  = FollowTask(self, self.rover)
 
     def run(self):
         print(type(self).__name__, "-->", end = " ")
         cmd = self.rover.get_cmd()
 
-        if cmd['task'] == "post":
-            self.post.run()
-            return
+        if cmd['command'] == "auto":
+
+            if cmd['endmode'] == "tennis":
+                self.post.run()
+                return
+            
+            if cmd['endmode'] == "none":
+                self.follow.run()
+                return
+        else:
+            print("Not moving")
         
-        if cmd['task'] == "gate":
-            self.gate.run()
-            return
+        # if cmd['task'] == "post":
+        #     self.post.run()
+        #     return
+        
+        # if cmd['task'] == "gate":
+        #     self.gate.run()
+        #     return
 
     def begin(self):
         while 1:
@@ -50,6 +63,22 @@ class TaskManager:
 
             while time.monotonic() - start_time < 0.1:
                 pass
+
+class FollowTask(StateMachine):
+    def __init__(self,*args):
+        super().__init__(*args)
+        self.pathfollower  = PathFollower(self, self.rover)
+        self.final_waypoint_tol = 2
+
+    def run(self) -> Situation:
+        print(type(self).__name__, "-->", end = " ")
+        waypoints = self.rover.get_waypoints()
+
+        if self.rover.get_pose().dist( waypoints[-1] ) < self.final_waypoint_tol:
+            print("DONE!")
+        else:
+            self.pathfollower.run(waypoints)
+
 
 class PostTask(StateMachine):
     class State(enum.Enum):
