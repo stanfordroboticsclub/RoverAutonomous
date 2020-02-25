@@ -1,16 +1,13 @@
 #!/usr/bin/env python3
 
-
 from UDPComms import Publisher, Subscriber, timeout
 import math
 import time
 import random
 
-
 import enum
 
 from typing import Dict, Tuple, Sequence, List
-
 
 class Situation(enum.Enum):
     ok = enum.auto()
@@ -25,35 +22,80 @@ class StateMachine:
     def run(self) -> Situation:
         raise NotImplementedError 
 
+class TaskManager:
+    def __init__(self):
+        self.rover = Rover()
+
+        self.post  = PostTask(self, self.rover)
+        self.gate  = GateTask(self, self.rover)
+        # self.retu  = PathFollower(self, self.rover)
+
+    def run(self):
+        print(type(self).__name__, "-->", end = " ")
+        cmd = self.rover.get_cmd()
+
+        if cmd['task'] == "post":
+            self.post.run()
+            return
+        
+        if cmd['task'] == "gate":
+            self.gate.run()
+            return
+
+    def begin(self):
+        while 1:
+            start_time = time.monotonic()
+            self.rover.cmd_sent = False # prevents multiple comands from being sent
+            self.run()
+
+            while time.monotonic() - start_time < 0.1:
+                pass
 
 class PostTask(StateMachine):
+    class State(enum.Enum):
+        Following = enum.auto()
+        Searching = enum.auto()
+        Final     = enum.auto()
 
     def __init__(self,*args):
         super().__init__(*args)
 
-        self.pathfollower = PathFollower(self, self.rover)
+        self.pathfollower  = PathFollower(self, self.rover)
+        self.search        = Search(self, self.rover)
         self.finalapproach = FinalApproachPost(self, self.rover)
 
-        self.state = self.pathfollower
+        self.state = self.State.Following
 
     def run(self) -> Situation:
-        ret = self.state.run()
+        print(type(self).__name__, "-->", end = " ")
+        waypoints = self.rover.get_waypoints()
 
-        if self.finalapproach.
+        if self.state = self.State.Following:
+            self.pathfollower.run(waypoints)
+            if self.rover.get_pose().dist( waypoints[-1] ) < 10:
+                self.state = self.State.Search
+            return
 
+        elif self.state = self.State.Searching:
+            self.search.run(waypoints[-1])
+
+        elif self.state = self.State.Final:
+            self.finalapproach.run()
 
 class PathFollower(StateMachine):
-
     def __init__(self,*args):
         super().__init__(*args)
         self.lookahead_radius = 6
+        self.start_point = None
 
+    def run(self, waypoints: List[Pose] ) -> Situation:
+        print(type(self).__name__, "-->", end = " ")
+        if self.start_point is None:
+            self.save_start_point()
 
-    def run(self) -> Situation:
-        self.rover.update()
-
-        if ()
-            return Situation.done
+        point = self.find_lookahead(waypoints)
+        angle = self.get_angle(point)
+        self.send_velocities(angle)
 
     def save_start_point(self):
         self.start_point = self.rover.get_pose()
@@ -141,8 +183,39 @@ class FinalApproachPost(StateMachine):
 class Unstuck(StateMachine):
     pass
 
+
 class Search(StateMachine):
-    pass
+    def __init__(self,*args):
+        super().__init__(*args)
+        self.search_radius = 10
+        self.accept_radius = 3
+        self.guess_timeout = 30
+
+        self.pathfollower = PathFollower()
+        self.guess = None
+        self.last_guess_time = float('-inf')
+
+    def run(self, endpoint: Pose) -> Situation:
+        print(type(self).__name__, "-->", end = " ")
+        if self.guess is None:
+            self.set_guess(endpoint)
+
+        elif self.rover.get_pose().dist(self.guess) < self.accept_radius:
+            self.set_guess(endpoint)
+
+        elif time.monotonic() - self.last_guess_time > self.guess_timeout:
+            self.set_guess(endpoint)
+
+        self.pathfollower.run([endpoint])
+
+    def set_guess(self, endpoint: Pose):
+        rand_x = (2*random.random()-1)*self.search_radius
+        rand_y = (2*random.random()-1)*self.search_radius
+        print(rand_x, rand_y)
+        self.guess = Pose(endpoint.x + rand_x, endpoint.y + rand_y)
+
+        self.last_guess_time = time.monotonic()
+        self.pathfollower.save_start_point()
 
 
 
@@ -158,9 +231,12 @@ class Pose:
     def bearing(self,other):
         return math.atan2( other.x - self.x, other.y - self.y)
 
+    def extraploate(self, distance, angle):
+        x = self.x + distance * math.cos(self.a + angle)
+        y = self.y + distance * math.sin(self.a + angle)
+        return Pose(x,y)
 
 class Rover:
-
     def __init__(self):
         self.imu = Subscriber(8220, timeout=1)
         self.gps = Subscriber(8280, timeout=2)
@@ -170,10 +246,11 @@ class Rover:
         self.lights = Publisher(8590)
 
         self.aruco = Subscriber(9021, timeout=2)
-        time.sleep(3)
 
+        time.sleep(2) # delay to give extra time for gps message
         self.start_gps = self.gps.recv()
-        # self.start_point = {"lat":self.gps.get()['lat'] , "lon":self.gps.get()['lon']}
+
+        self.cmd_sent = False
 
     def project(self, lat, lon):
         lat_orig = self.start_gps['lat']
@@ -192,212 +269,17 @@ class Rover:
         return Pose( *self.project( gps['lat'], gps['lon']), heading)
 
     def send_velocities(self, forward, twist):
-        pass
+        msg = {"f":forward, "t":twist} 
+        self.cmd_vel.send( msg )
+        self.cmd_sent = True
+        print(msg)
 
-
-
-
-
-class Pursuit:
-
-    def __init__(self):
-
-        self.final_radius = 1.5    # how close should we need to get to last endpoint
-        self.search_radius = 20    # how far should we look from the given endpoint
-        self.reached_destination = False # switch modes into tennis ball seach
-        self.robot = None
-        self.guess = None # where are we driving towards
-        self.guess_radius = 3 # if we are within this distance we move onto the next guess
-        self.guess_time = None
-
-        self.last_tennis_ball = 0
-
-        self.past_locations = []
-        self.stuck_time = 0
-
-        while True:
-            self.update()
-            time.sleep(0.1)
-
-    def get_guess(self,endpoint):
-        x, y = endpoint
-        rand_x = (2*random.random()-1)*self.search_radius
-        rand_y = (2*random.random()-1)*self.search_radius
-        self.random_corrd = (rand_x, rand_y)
-        print(rand_x, rand_y)
-        return (x + rand_x, y + rand_y)
-
-
-
-    def find_ball(self, cmd):
-        if cmd['end_mode'] == 'none':
-            print("REACHED TENNIS BALL")
-            # self.lights.send({'r':0, 'g':1, 'b':0})
-            self.servo.send({'pan':0,'tilt':90})
-            self.send_stop()
-
-        elif cmd['end_mode'] == 'tennis':
-            print("Entering search program")
-
-            # tennis_balls = self.tennis.get()
-            # tennis_balls = []
-
-            try:
-                t1 = self.tennis1.get()
-            except timeout:
-                t1 = (None, float('inf'))
-
-            try:
-                t2 = self.tennis2.get()
-            except timeout:
-                t2 = (None, float('inf'))
-
-            try:
-                t3 = self.tennis3.get()
-            except timeout:
-                t3 = (None, float('inf'))
-
-            dists = [(t1[1], 0), (t2[1], 1), (t3[1], 2)]
-            best = [t1,t2,t3][min(dists)[1]]
-
-            last_waypoint = cmd['waypoints'][-1]
-            endpoint = self.project(last_waypoint['lat'], last_waypoint['lon'])
-
-            if best[0] == None:
-
-                if (time.time() - self.last_tennis_ball) < 2:
-                    # if we saw a ball in the last 2 sec
-                    out = {"f": 70, "t": 0 }
-                    print('cont to prev seen ball', out)
-                    self.cmd_vel.send(out)
-
-                elif self.guess == None:
-                    self.guess = self.get_guess(endpoint)
-                    self.guess_time = time.time()
-                    print("NEW RANDOM GUESS - first")
-                elif self.distance(self.guess) < self.guess_radius:
-                    self.guess = self.get_guess(endpoint)
-                    print("NEW RANDOM GUESS - next")
-                    self.guess_time = time.time()
-                elif (time.time() - self.guess_time) > 40:
-                    self.guess = self.get_guess(endpoint)
-                    print("NEW RANDOM GUESS - timeout")
-                    self.guess_time = time.time()
-                    self.guess = self.get_guess(endpoint)
-
-                print("random corrds",self.random_corrd)
-                diff_angle = self.get_angle(self.guess)
-                self.send_velocities(diff_angle)
-            else:
-                # self.guess_time = time.time() # will this matter?
-                self.last_tennis_ball = time.time()
-                if best[1] < 200:
-                    print("REACHED TENNIS BALL")
-                    # self.lights.send({'r':0, 'g':1, 'b':0})
-                    self.servo.send({'pan':0,'tilt':90})
-                    self.send_stop()
-                else:
-                    self.send_velocities_slow(best[0])
-                # get best tennis ball
-                # drive towards it
-                #follow the tennis ball!
-
-
-        else:
-            print("incorrect mode")
-
-    def update(self):
-
-        try:
-            self.robot = self.gps.get()
-            cmd = self.auto_control.get()
-        except:
-            print('lost control')
-            return
-
-        if cmd['command'] == 'off':
-            print("off")
-            self.reached_destination = False
-            self.start_point['lat'] = self.gps.get()['lat']
-            self.start_point['lon'] = self.gps.get()['lon']
-            # self.lights.send({'r':1, 'g':0, 'b':0})
-            self.servo.send({'pan':0,'tilt':-90})
-        elif( cmd['command'] == 'auto'):
-            last_waypoint = cmd['waypoints'][-1]
-
-            if self.reached_destination:
-                self.find_ball(cmd)
-
-            elif( self.distance(self.project(last_waypoint['lat'], last_waypoint['lon'])) \
-                    < self.final_radius ):
-                self.reached_destination = True
-                print("REACHED final End point")
-            elif self.analyze_stuck():
-                self.un_stick()
-            else:
-                lookahead = self.find_lookahead(cmd['waypoints'])
-                diff_angle = self.get_angle(lookahead)
-                self.send_velocities(diff_angle)
-        else:
-            raise ValueError
-
-    def analyze_stuck(self):
-        self.past_locations.append([self.project(self.robot['lat'], self.robot['lon']), self.imu.get()['angle'][0], time.time()])
-        if len(self.past_locations) < 100:
-            return False
-
-        while len(self.past_locations) > 100:
-            self.past_locations.pop(0)
-        if (time.time() - self.stuck_time < 14):
-            return False
-
-        abs_angle = lambda x,y: min( abs(x-y + i*360) for i in [-1,0,1])
-        # location, t = self.past_locations[0]
-        # if self.distance(location)/(time.time() - t) < 0.1
-        locations = [self.past_locations[10*i+5][0] for i in range(9)]
-        angles    = [self.past_locations[10*i+5][1] for i in range(9)]
-
-        max_loc = max([self.distance(loc) for loc in locations])
-        max_angle = max([abs_angle(ang,self.imu.get()['angle'][0]) for ang in angles])
-
-        print("we are", max_loc, "from stcuk and angle", max_angle)
-
-        if max_loc< 1 and max_angle < 30:
-            print("WE ARE STUCK")
-            # self.stuck_location = location
-            self.stuck_time = time.time()
-            return True
-        return False
-
-    def un_stick(self):
-        start_time = time.time()
-        while (time.time() - start_time) < 4 and self.auto_control.get()['command'] == 'auto':
-            self.analyze_stuck()
-            out = {"f": -100, "t": -20 }
-            print('unsticking', out)
-            self.cmd_vel.send(out)
-            time.sleep(0.1)
-
-        start_time = time.time()
-        start_angle = self.imu.get()['angle'][0]
-        while (time.time() - start_time) < 1 and self.auto_control.get()['command'] == 'auto':
-            self.analyze_stuck()
-            out = {"f": 0, "t": -70 }
-            print('unsticking part 2', out)
-            self.cmd_vel.send(out)
-            time.sleep(0.1)
-
-        start_time = time.time()
-        while (time.time() - start_time) < 2 and self.auto_control.get()['command'] == 'auto':
-            self.analyze_stuck()
-            out = {"f": 70, "t": 0 }
-            print('unsticking part 2', out)
-            self.cmd_vel.send(out)
-            time.sleep(0.1)
-
-
-
+    def get_aruco(self):
+        markers = self.aruco.get()
+        # TODO
 
 
 if __name__ == '__main__':
-    a = Pursuit()
+    a = TaskManager()
+    a.begin()
+
