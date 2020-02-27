@@ -24,7 +24,10 @@ while 1:
     try:
         msg = cmd.get()
         if msg['command'] == 'auto':
-            status = status.get()
+            try:
+                status = status.get()
+            except timeout:
+                status = "working"
             if status == "done":
                 GPIO.output(redPin, 0)
                 if (time.monotonic() - flash_time) > 0.5:
