@@ -39,6 +39,7 @@ class TaskManager:
 
         if cmd['command'] == "auto":
 
+            self.rover.logger.add(self.rover.get_pose() , "red")
             if cmd['end_mode'] == "tennis":
                 self.post.run()
                 return
@@ -60,7 +61,7 @@ class TaskManager:
     def begin(self):
         while 1:
             start_time = time.monotonic()
-            self.rover.cmd_sent = False # prevents multiple comands from being sent
+            self.rover.next_iteration()
             self.run()
 
             while time.monotonic() - start_time < 0.1:
@@ -270,6 +271,7 @@ class Search(StateMachine):
             for idx, marker in markers.items():
                 if idx in searched:
                     g = self.rover.get_pose().extraploate(marker)
+                    self.rover.logger.add(g, "green")
                     print("New Guess from observation")
                     self.set_guess(g)
                     self.seen = True
@@ -302,6 +304,18 @@ class Search(StateMachine):
         self.guess = guess
         self.last_guess_time = time.monotonic()
         self.pathfollower.save_start_point()
+
+class Logger:
+    def __init__(self, port):
+        self.pub = Publisher(port)
+        self.points = []
+
+    def next(self):
+        self.pub.send(self.points)
+        self.points = []
+
+    def add(self, pose, color):
+        self.points.append( [(pose.x, pose.y), pose.a, color] )
 
 class Pose:
     def __init__(self, x, y, angle=None):
@@ -339,6 +353,7 @@ class Rover:
 
         self.cmd_vel = Publisher(8830)
 
+        self.logger = Logger(8312)
 
         self.aruco = Subscriber(8390, timeout=3)
 
@@ -365,6 +380,8 @@ class Rover:
 
     def send_vel(self, forward, twist):
         msg = {"f":forward, "t":twist} 
+        if self.cmd_sent:
+            print("ERROR Multiple commands being sent!")
         self.cmd_vel.send( msg )
         self.cmd_sent = True
         print(msg)
@@ -386,6 +403,10 @@ class Rover:
         for waypoint in wps:
             out.append( Pose( *self.project( waypoint['lat'], waypoint['lon']) ) )
         return out
+    
+    def next_iteration(self):
+        self.cmd_sent = False
+        self.logger.next()
 
 
 if __name__ == '__main__':
