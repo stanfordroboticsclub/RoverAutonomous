@@ -33,7 +33,9 @@ class TaskManager:
 
     def run(self):
         print(type(self).__name__, "-->", end = " ")
+
         cmd = self.rover.get_cmd()
+        print( self.rover.get_pose() )
 
         if cmd['command'] == "auto":
 
@@ -105,6 +107,10 @@ class PostTask(StateMachine):
         if self.state == self.State.Following:
             self.pathfollower.run(waypoints)
             if self.rover.get_pose().dist( waypoints[-1] ) < self.final_waypoint_tol:
+                print("reached final waypoint, entering search")
+                self.state = self.State.Searching
+            if len(self.rover.get_aruco()) != 0:
+                print("saw something entering search")
                 self.state = self.State.Searching
             return
 
@@ -116,7 +122,7 @@ class PostTask(StateMachine):
                 self.state = self.State.Final
 
         elif self.state == self.State.Final:
-            rover.lights.send("done")
+            self.rover.lights.send("done")
             print("DONE!!!")
             # self.finalapproach.run()
 
@@ -214,12 +220,12 @@ class PathFollower(StateMachine):
 
 class SlowPathFollower(PathFollower):
     def send_velocities(self, angle):
-        turn_rate = -100*angle/math.pi
+        turn_rate = -130*angle/math.pi
 
         if math.fabs(angle) < math.radians(10):
-            forward_rate = 50
+            forward_rate = 90
         elif math.fabs(angle) < math.radians(60):
-            forward_rate = 10
+            forward_rate = 50
         elif math.fabs(angle) < math.radians(140):
             forward_rate = 0
         else:
@@ -267,6 +273,8 @@ class Search(StateMachine):
                     print("New Guess from observation")
                     self.set_guess(g)
                     self.seen = True
+                    self.pathfollower.send_velocities( -marker.a )
+                    return
                     break
 
         elif self.guess is None:
@@ -314,6 +322,9 @@ class Pose:
         y = self.y + distance * math.sin(self.a + angle)
         return Pose(x,y)
 
+    def __repr__(self):
+        return "Pose(x="+str(self.x)+", y="+str(self.y)+", a="+str(self.a)+")"
+
 class Bearing:
     def __init__(self, dist, angle):
         self.dist = dist
@@ -349,7 +360,7 @@ class Rover:
 
     def get_pose(self):
         gps = self.gps.get()
-        heading = math.radians( self.imu.get()['angle'][0] )
+        heading = math.radians( 360 -self.imu.get()['angle'][0] )
         return Pose( *self.project( gps['lat'], gps['lon']), heading)
 
     def send_vel(self, forward, twist):
