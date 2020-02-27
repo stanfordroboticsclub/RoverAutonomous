@@ -31,7 +31,7 @@ while 1:
                 status_msg = status.get()
             except timeout:
                 status_msg = "working"
-            if statu_msgs == "done":
+            if status_msg == "done":
                 GPIO.output(redPin, 0)
                 if (time.monotonic() - flash_time) > 0.5:
                     green_led = not green_led
@@ -49,5 +49,6 @@ while 1:
         GPIO.output(redPin, 0)
         GPIO.output(greenPin, 0)
         GPIO.cleanup()
+        raise
 
 
