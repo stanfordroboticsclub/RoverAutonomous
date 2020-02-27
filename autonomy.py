@@ -37,11 +37,11 @@ class TaskManager:
 
         if cmd['command'] == "auto":
 
-            if cmd['endmode'] == "tennis":
+            if cmd['end_mode'] == "tennis":
                 self.post.run()
                 return
             
-            if cmd['endmode'] == "none":
+            if cmd['end_mode'] == "none":
                 self.follow.run()
                 return
         else:
@@ -93,7 +93,7 @@ class PostTask(StateMachine):
         self.search        = Search(self, self.rover)
         self.finalapproach = FinalApproachPost(self, self.rover)
 
-        self.final_waypoint_tol = 5
+        self.final_waypoint_tol = 7
         self.aruco_visual_tolerance = 1
 
         self.state = self.State.Following
@@ -109,12 +109,14 @@ class PostTask(StateMachine):
             return
 
         elif self.state == self.State.Searching:
-            searched = [4,5] # TODO HARDCODED
+            searched = [4,3] # TODO HARDCODED
             self.search.run(waypoints[-1], searched )
-            if min(self.rover.get_aruco()[i].dist for i in searched) < self.aruco_visual_tolerance:
+            markers = self.rover.get_aruco()
+            if min( [markers[i].dist for i in searched if i in markers.keys()] + [float("inf")] ) < self.aruco_visual_tolerance:
                 self.state = self.State.Final
 
         elif self.state == self.State.Final:
+            rover.lights.send("done")
             print("DONE!!!")
             # self.finalapproach.run()
 
@@ -124,7 +126,7 @@ class PathFollower(StateMachine):
         self.lookahead_radius = 6
         self.start_point = None
 
-    def run(self, waypoints: List['Pose'] ) -> Situation:
+    def run(self, waypoints: List['Pose'] , slow = False) -> Situation:
         print(type(self).__name__, "-->", end = " ")
         if self.start_point is None:
             self.save_start_point()
@@ -199,7 +201,7 @@ class PathFollower(StateMachine):
         turn_rate = -200*angle/math.pi
 
         if math.fabs(angle) < math.radians(10):
-            forward_rate = 130
+            forward_rate = 80
         elif math.fabs(angle) < math.radians(60):
             forward_rate = 80
         elif math.fabs(angle) < math.radians(140):
@@ -209,6 +211,21 @@ class PathFollower(StateMachine):
 
         self.rover.send_vel(forward_rate, turn_rate)
 
+
+class SlowPathFollower(PathFollower):
+    def send_velocities(self, angle):
+        turn_rate = -100*angle/math.pi
+
+        if math.fabs(angle) < math.radians(10):
+            forward_rate = 50
+        elif math.fabs(angle) < math.radians(60):
+            forward_rate = 10
+        elif math.fabs(angle) < math.radians(140):
+            forward_rate = 0
+        else:
+            forward_rate = 0
+
+        self.rover.send_vel(forward_rate, turn_rate)
 
 class FinalApproachGate(StateMachine):
     pass
@@ -230,10 +247,12 @@ class Search(StateMachine):
     def __init__(self,*args):
         super().__init__(*args)
         self.search_radius = 10
-        self.accept_radius = 2
+        self.accept_radius = 1
         self.guess_timeout = 30
 
-        self.pathfollower = PathFollower()
+        self.seen = False
+
+        self.pathfollower = SlowPathFollower(self,self.rover)
         self.guess = None
         self.last_guess_time = float('-inf')
 
@@ -245,16 +264,22 @@ class Search(StateMachine):
             for idx, marker in markers.items():
                 if idx in searched:
                     g = self.rover.get_pose().extraploate(marker)
+                    print("New Guess from observation")
                     self.set_guess(g)
+                    self.seen = True
                     break
 
         elif self.guess is None:
+            print("New random guess from initial")
             self.rand_guess(endpoint)
 
-        elif self.rover.get_pose().dist(self.guess) < self.accept_radius:
+        elif (self.rover.get_pose().dist(self.guess) < self.accept_radius) and not self.seen:
+            #TODO: this can overwrite 
+            print("New random guess from reaching previous")
             self.rand_guess(endpoint)
 
         elif time.monotonic() - self.last_guess_time > self.guess_timeout:
+            print("New random guess from timeout")
             self.rand_guess(endpoint)
 
         self.pathfollower.run([endpoint])
@@ -296,14 +321,15 @@ class Bearing:
 
 class Rover:
     def __init__(self):
-        self.imu = Subscriber(8220, timeout=1)
-        self.gps = Subscriber(8280, timeout=2)
+        self.imu = Subscriber(8220, timeout=2)
+        self.gps = Subscriber(8280, timeout=3)
         self.auto_control = Subscriber(8310, timeout=5)
+        self.lights = Publisher(8311)
 
         self.cmd_vel = Publisher(8830)
-        self.lights = Publisher(8590)
 
-        self.aruco = Subscriber(9021, timeout=2)
+
+        self.aruco = Subscriber(8390, timeout=3)
 
         time.sleep(2) # delay to give extra time for gps message
         self.start_gps = self.gps.recv()
@@ -326,7 +352,7 @@ class Rover:
         heading = math.radians( self.imu.get()['angle'][0] )
         return Pose( *self.project( gps['lat'], gps['lon']), heading)
 
-    def send_velocities(self, forward, twist):
+    def send_vel(self, forward, twist):
         msg = {"f":forward, "t":twist} 
         self.cmd_vel.send( msg )
         self.cmd_sent = True
@@ -335,8 +361,19 @@ class Rover:
     def get_aruco(self):
         markers = self.aruco.get()
         out = {}
-        for idx, dist, angle in markers:
+        for marker in markers:
+            idx, dist, angle = marker['id'], marker['dist'], marker['angle']
             out[idx] = Bearing(dist, math.radians(angle))
+        return out
+
+    def get_cmd(self):
+        return self.auto_control.get()
+
+    def get_waypoints(self) -> List["Pose"]:
+        wps = self.auto_control.get()['waypoints']
+        out = []
+        for waypoint in wps:
+            out.append( Pose( *self.project( waypoint['lat'], waypoint['lon']) ) )
         return out
 
 

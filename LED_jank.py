@@ -5,8 +5,8 @@ GPIO.setmode(GPIO.BCM)
 
 from UDPComms import Subscriber, timeout
 
-cmd = Subscriber(8310, timeout = 5)
-status = Subscriber(8311, timeout = 5)
+cmd = Subscriber(8310, timeout = 1)
+status = Subscriber(8311, timeout = 1)
 
 time.sleep(2)
 
