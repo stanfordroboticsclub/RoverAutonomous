@@ -28,10 +28,10 @@ while 1:
         msg = cmd.get()
         if msg['command'] == 'auto':
             try:
-                status = status.get()
+                status_msg = status.get()
             except timeout:
-                status = "working"
-            if status == "done":
+                status_msg = "working"
+            if statu_msgs == "done":
                 GPIO.output(redPin, 0)
                 if (time.monotonic() - flash_time) > 0.5:
                     green_led = not green_led
