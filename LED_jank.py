@@ -1,15 +1,18 @@
 import math
 import time
 import RPi.GPIO as GPIO
+GPIO.setmode(GPIO.BCM)
+
 from UDPComms import Subscriber, timeout
 
 cmd = Subscriber(8310, timeout = 5)
 status = Subscriber(8311, timeout = 5)
 
+time.sleep(2)
+
 greenPin = 20
 redPin = 21
 
-GPIO.setmode(GPIO.BCM)
 GPIO.setup(redPin, GPIO.OUT)
 GPIO.setup(greenPin, GPIO.OUT)
 
