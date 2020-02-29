@@ -208,9 +208,9 @@ class PathFollower(StateMachine):
         turn_rate = -200*angle/math.pi
 
         if math.fabs(angle) < math.radians(10):
-            forward_rate = 80
+            forward_rate = 140
         elif math.fabs(angle) < math.radians(60):
-            forward_rate = 80
+            forward_rate = 100
         elif math.fabs(angle) < math.radians(140):
             forward_rate = 30
         else:
@@ -332,8 +332,8 @@ class Pose:
     def extraploate(self, bearing: 'Bearing') -> 'Pose':
         distance = bearing.dist
         angle = bearing.a
-        x = self.x + distance * math.cos(self.a + angle)
-        y = self.y + distance * math.sin(self.a + angle)
+        x = self.x + distance * math.cos(self.a - angle)
+        y = self.y + distance * math.sin(self.a - angle)
         return Pose(x,y)
 
     def __repr__(self):
@@ -375,7 +375,8 @@ class Rover:
 
     def get_pose(self):
         gps = self.gps.get()
-        heading = math.radians( 360 -self.imu.get()['angle'][0] )
+        # heading = math.radians( 360 -self.imu.get()['angle'][0] )
+        heading = math.radians( self.imu.get()['angle'][0] )
         return Pose( *self.project( gps['lat'], gps['lon']), heading)
 
     def send_vel(self, forward, twist):
